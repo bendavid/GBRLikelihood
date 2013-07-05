@@ -20,7 +20,7 @@
 // Power function p.d.f
 // END_HTML
 //
-
+ 
 #include "RooFit.h"
 
 #include "Riostream.h"
@@ -64,6 +64,9 @@
 #include "RooCFunction1Binding.h"
 #include "TH1D.h"
 #include "omp.h"
+#include "vdt/vdtMath.h"
+#include <stdlib.h>
+#include <malloc.h>
 
 ClassImp(RooTreeConvert)
 
@@ -189,8 +192,8 @@ RooRealConstraint::RooRealConstraint(const char *name, const char *title, RooAbs
   _real("real","",this,real),
   _low(low),
   _high(high),
-  _scale((_high-_low)/TMath::Pi()),
-  _offset(_low + (_high-_low)/2.0)
+  _scale(0.5*(_high-_low)),
+  _offset(_low + 0.5*(_high-_low))
 {
 
   RooGBRTarget *var = dynamic_cast<RooGBRTarget*>(&real);
@@ -241,7 +244,12 @@ Double_t RooRealConstraint::evaluate() const
   //return (_low + std::abs((_real.arg().getVal() % (2.0*(_high-_low))) - _high));
   //return std::max(std::min(_real.arg().getVal(),_high),_low);
   //return std::max(std::min(_real.arg().getVal(),_high),_low);
-  return _low + 0.5*(_high-_low)*(sin(_real)+1.0);
+  //return _low + 0.5*(_high-_low)*(sin(_real)+1.0);
+  
+  //return _offset + _scale*vdt::fast_sinf(_real);
+  return _offset + _scale*vdt::fast_sin(_real);
+  //return _offset + _scale*sin(_real);
+  
   //return _offset + _scale*tanh(_real);
   //return _low + _scale/(1.0+exp(-_real));
   //return _offset + _scale*atan(_real);
@@ -577,7 +585,7 @@ void RooGBRTarget::SetUseFunc(bool b)
   
 }
 
-ClassImp(RooHybridBDTAutoPdf)
+//ClassImp(RooHybridBDTAutoPdf) 
 
 RooHybridBDTAutoPdf *gHybridBDTAutoPointer;
 
@@ -620,8 +628,8 @@ RooHybridBDTAutoPdf::RooHybridBDTAutoPdf(const char *name, const char *title, Ro
   //printf("fN0 = %5f\n",fN0->getVal());
   
   //create constraint term for profile likelihood gradient scan and combine with external likelihood
-  fConstraintVal = new RooRealVar(TString::Format("%s_constraintval","",GetName()),"",fR->getVal());
-  fConstraintCoeff = new RooRealVar(TString::Format("%s_constraintcoeff","",GetName()),"",0.);
+  fConstraintVal = new RooRealVar(TString::Format("%s_constraintval",GetName()),"",fR->getVal());
+  fConstraintCoeff = new RooRealVar(TString::Format("%s_constraintcoeff",GetName()),"",0.);
   RooFormulaVar *constraint = new RooFormulaVar(TString::Format("%s_constraint",GetName()),"","@0*pow(@1-@2,2)",RooArgList(*fConstraintCoeff,*fR,*fConstraintVal));
   
   fN0 = new RooAddition(TString::Format("%s_fullexternal",GetName()),"",RooArgList(*fExternal,*constraint));
@@ -726,54 +734,95 @@ RooHybridBDTAutoPdf::RooHybridBDTAutoPdf(const char *name, const char *title, Ro
   
 
 
-  
+   
   
 //first loop here  
   
   printf("nev = %i, nvar = %i\n",int(nev),nvars);
 
+  int ncls = fData.size();
+  
 //  fEvalVector.resize(fCondVars.getSize());
   
+ 
+   
   //initialize arrays
 
-  _sepgains.resize(nvars);
-  _sepgainsigs.resize(nvars);
-  _cutvals.resize(nvars);
-  _nlefts.resize(nvars);
-  _nrights.resize(nvars);
-  _sumwlefts.resize(nvars);
-  _sumwrights.resize(nvars);
-  _sumtgtlefts.resize(nvars);
-  _sumtgtrights.resize(nvars);
-  _leftvars.resize(nvars);
-  _rightvars.resize(nvars);  
-  _fullvars.resize(nvars);  
-  _bestbins.resize(nvars);
+  _sepgains = new float[nvars];
+  _sepgainsigs = new float[nvars];
+  _cutvals = new float[nvars];
+  _nlefts = new int[nvars];
+  _nrights = new int[nvars];
+  _sumwlefts = new float[nvars];
+  _sumwrights = new float[nvars];
+  _sumtgtlefts = new float[nvars];
+  _sumtgtrights = new float[nvars];
+  _leftvars = new float[nvars];
+  _rightvars = new float[nvars];  
+  _fullvars = new float[nvars];  
+  _bestbins = new int[nvars];
 
+ 
   
   
-  _ws.resize(nvars,std::vector<float>(fNBinsMax));
-  _ws2.resize(nvars,std::vector<float>(fNBinsMax));
-  _wscls.resize(nvars,std::vector<std::vector<float> >(fNBinsMax,std::vector<float>(fStaticPdfs.getSize())));  
-  _ns.resize(nvars,std::vector<int>(fNBinsMax));
-  _nsd.resize(nvars,std::vector<int>(fNBinsMax));  
-  _tgts.resize(nvars,std::vector<std::vector<float> >(fNBinsMax,std::vector<float>(fNTargets)));
-  _tgt2s.resize(nvars,std::vector<float>(fNBinsMax));  
-  _sumws.resize(nvars,std::vector<float>(fNBinsMax));
-  _sumws2.resize(nvars,std::vector<float>(fNBinsMax));
-  _sumwscls.resize(nvars,std::vector<std::vector<float> >(fNBinsMax,std::vector<float>(fStaticPdfs.getSize())));  
-  _sumns.resize(nvars,std::vector<int>(fNBinsMax));
-  _sumnsd.resize(nvars,std::vector<int>(fNBinsMax));  
-  _sumtgts.resize(nvars,std::vector<std::vector<float> >(fNBinsMax,std::vector<float>(fNTargets)));
-  _sumtgt2s.resize(nvars,std::vector<float>(fNBinsMax));
-  _varvals.resize(nvars,std::vector<float>(fNBinsMax));    
-  _bsepgains.resize(nvars,std::vector<float>(fNBinsMax));
-  _bsepgainsigs.resize(nvars,std::vector<float>(fNBinsMax));
   
-  _quants.resize(nvars,std::vector<int>(nev));
-  _bins.resize(nvars,std::vector<int>(nev));
+  _ws = new double*[nvars];
+  _ws2 = new double*[nvars];
+  _wscls = new double**[nvars];
+  _ns = new int*[nvars];
+  _nsd = new int*[nvars];  
+  _tgts = new double*[nvars];  
+  _tgt2s = new double*[nvars];  
+  _sumws = new double*[nvars];
+  _sumws2 = new double*[nvars];
+  _sumwscls = new double**[nvars];
+  _sumns = new int*[nvars];
+  _sumtgts = new double*[nvars];  
+  _sumtgt2s = new double*[nvars];
+  _varvals = new float*[nvars];    
+  _bsepgains = new float*[nvars];
+  _bsepgainsigs = new float*[nvars];
   
-  fQuantileMaps.resize(nvars,std::vector<float>(fNQuantiles));
+  _quants  = new int*[nvars];  
+  _bins  = new int*[nvars];  
+  _clss  = new int*[nvars];
+  
+  fQuantileMaps = new float*[nvars];  
+  
+  
+  for (int ivar=0; ivar<nvars; ++ivar) {
+    _ws[ivar] = new double[fNBinsMax];
+    _ws2[ivar] = new double[fNBinsMax];    
+    _ns[ivar] = new int[fNBinsMax];
+    _tgts[ivar] = new double[fNBinsMax];
+    _tgt2s[ivar] = new double[fNBinsMax];  
+    _sumws[ivar] = new double[fNBinsMax];
+    _sumws2[ivar] = new double[fNBinsMax];
+    _sumns[ivar] = new int[fNBinsMax];
+    _sumtgts[ivar] = new double[fNBinsMax];
+    _sumtgt2s[ivar] = new double[fNBinsMax];
+    _varvals[ivar] = new float[fNBinsMax];  
+    _bsepgains[ivar] = new float[fNBinsMax];      
+    _bsepgainsigs[ivar] = new float[fNBinsMax];      
+    
+    _wscls[ivar] = new double*[fNBinsMax];
+    _sumwscls[ivar] = new double*[fNBinsMax];    
+    
+    _quants[ivar] = new int[nev];
+    _bins[ivar] = new int[nev];
+    _clss[ivar] = new int[nev];
+    
+    fQuantileMaps[ivar] = new float[fNQuantiles];
+    
+
+    for (int unsigned ibin=0; ibin<fNBinsMax; ++ibin) {
+      _wscls[ivar][ibin] = new double[ncls];
+      _sumwscls[ivar][ibin] = new double[ncls];
+    }
+    
+  }  
+  
+  
   
       
 
@@ -994,7 +1043,9 @@ void RooHybridBDTAutoPdf::UpdateTargets(int nvars, double sumw, int itree) {
     
     int evcls = fEvts.at(iev)->Class();
     double pdfval = fEvts.at(iev)->PdfVal();
-    double invpdf = 1.0/pdfval;
+    //double invpdf = 1.0/pdfval;
+    double invpdf = vdt::fast_inv(pdfval);
+    //float invpdf = vdt::fast_invf(pdfval);
     double invpdfsq = invpdf*invpdf;
     double weight = fEvts.at(iev)->Weight();
     
@@ -1015,8 +1066,24 @@ void RooHybridBDTAutoPdf::UpdateTargets(int nvars, double sumw, int itree) {
 	int ivar = fOuterIndices[evcls][iidx];
 	int itgt = ivar - fExtVars.getSize();
 	
-	
-	double drvval = Derivative1Fast(static_cast<RooAbsReal*>(fStaticPdfsClones[ithread].at(evcls)),pdfval,static_cast<RooRealVar*>(fFullParmsClones[ithread].at(ivar)),&fParmSetClones[ithread],1e-3*static_cast<RooRealVar*>(fFullParmsClones[ithread].at(ivar))->getError());
+	RooRealVar *var = static_cast<RooRealVar*>(fFullParmsClones[ithread].at(ivar));
+        double startval = var->getVal();
+        double step = 1e-3*var->getError();
+        
+        RooAbsReal *func = static_cast<RooAbsReal*>(fStaticPdfs.at(evcls));
+        
+        var->setVal(startval + step);
+        double upval = func->getValV(&fParmSetClones[ithread]);
+        
+        var->setVal(startval - step);
+        double downval = func->getValV(&fParmSetClones[ithread]);
+        
+        var->setVal(startval);
+        
+        double drvval = (upval-downval)*vdt::fast_inv(2.0*step);
+        
+        
+	//double drvval = Derivative1Fast(static_cast<RooAbsReal*>(fStaticPdfsClones[ithread].at(evcls)),pdfval,static_cast<RooRealVar*>(fFullParmsClones[ithread].at(ivar)),&fParmSetClones[ithread],1e-3*static_cast<RooRealVar*>(fFullParmsClones[ithread].at(ivar))->getError());
 	//double drvval = Derivative1(static_cast<RooAbsReal*>(fStaticPdfs.at(evcls)),static_cast<RooRealVar*>(fFullParms.at(ivar)),&parmset,1e-3*static_cast<RooRealVar*>(fFullParms.at(ivar))->getError());
 	
 	
@@ -1027,8 +1094,9 @@ void RooHybridBDTAutoPdf::UpdateTargets(int nvars, double sumw, int itree) {
 	
 	if (itgt<0) continue;	
 	
-	double drv2val = Derivative2Fast(static_cast<RooAbsReal*>(fStaticPdfsClones[ithread].at(evcls)),pdfval,static_cast<RooRealVar*>(fFullParmsClones[ithread].at(ivar)),&fParmSetClones[ithread],1e-3*static_cast<RooRealVar*>(fFullParmsClones[ithread].at(ivar))->getError());
+	//double drv2val = Derivative2Fast(static_cast<RooAbsReal*>(fStaticPdfsClones[ithread].at(evcls)),pdfval,static_cast<RooRealVar*>(fFullParmsClones[ithread].at(ivar)),&fParmSetClones[ithread],1e-3*static_cast<RooRealVar*>(fFullParmsClones[ithread].at(ivar))->getError());
 	
+        double drv2val = (upval + downval - 2.0*pdfval)*vdt::fast_inv(step*step);
 
 	//fEvts.at(iev)->SetDerivative2(ivar,drv2val);
 
@@ -1547,11 +1615,31 @@ const HybridGBRForest *RooHybridBDTAutoPdf::TrainForest(int ntrees, bool reusefo
   return forest;  
   
 }
-
-
-
+ 
+    
+// void RooHybridBDTAutoPdf::vtest(const float **__restrict__ ra, const float **__restrict__ rb, float **__restrict__ rc) {
+//     
+//   for (int iat=0; iat<128; ++iat) {
+// //     const float *__restrict__ sra = (const float*)__builtin_assume_aligned(ra[iat],32);
+// //     const float *__restrict__ srb = (const float*)__builtin_assume_aligned(rb[iat],32);
+// //     float *__restrict__ src = (float*)__builtin_assume_aligned(rc[iat],32);    
+//     //rc[iat] = ra[iat] + rb[iat];
+//     for (int jat=0; jat<128; ++jat) {
+//       //src[jat] = sra[jat] + srb[jat];
+//       rc[iat][jat] = ra[iat][jat] + rb[iat][jat];
+//     }
+//   }
+//        
+// }  
+    
+  
 //_______________________________________________________________________
 void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, double sumwtotal, HybridGBRTree &tree, int nvars, double transition, int depth, const std::vector<std::pair<float,float> > limits, int tgtidx) {
+  
+  
+  //alignas(32) float floats[128];
+  
+  //float *aarrtest = new float[128];
   
   //index of current intermediate node
   int thisidx = tree.CutIndices().size();    
@@ -1580,6 +1668,19 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
 //   double avgp = 1.0;
   
   
+//   const float *a = (float*)__builtin_assume_aligned(memalign(32,128*sizeof(float)),32);
+//   const float *b = (float*)__builtin_assume_aligned(memalign(32,128*sizeof(float)),32);
+//   float *c = (float*)__builtin_assume_aligned(memalign(32,128*sizeof(float)),32);
+//    
+  
+//   const float *__restrict__ ar = (float*)__builtin_assume_aligned(a,32);
+//   const float *__restrict__ br = (float*)__builtin_assume_aligned(b,32);
+//   float *__restrict__ cr = (float*)__builtin_assume_aligned(c,32);
+  
+
+  
+        
+  
   //float *__restrict *__restrict__ sumws = _sumws;  
   
   //trivial open-mp based multithreading of loop over input variables
@@ -1587,7 +1688,7 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
   //elements of the 2-d arrays
   #pragma omp parallel for
   for (int ivar=0; ivar<nvars; ++ivar) {
-    
+          
     //printf("loop over ivar = %i\n",ivar);
     
 //     if (numprimary==0) {
@@ -1606,6 +1707,7 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
     //fill temporary array of quantiles (to allow auto-vectorization of later loops)
     for (int iev = 0; iev<nev; ++iev) {
       _quants[ivar][iev] = evts[iev]->Quantile(ivar);
+      _clss[ivar][iev] = evts[iev]->Class();
     }
     
     int minquant = std::numeric_limits<int>::max();
@@ -1687,7 +1789,7 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
 	_wscls[ivar][ibin][icls] = 0.;
       }
       _ns[ivar][ibin] = 0;
-      _tgts[ivar][ibin][tgtidx] = 0.;
+      _tgts[ivar][ibin] = 0.;
       _tgt2s[ivar][ibin] = 0.;
       
       int quant = ((1+ibin)<<pscale) + offset - 1;
@@ -1716,7 +1818,7 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
       _bins[ivar][iev] = (_quants[ivar][iev]-offset)>>pscale;
     }
 
-    
+      
     //printf("filling histogram-style arrays\n");
      
     //compute summed quantities differential in each bin
@@ -1731,19 +1833,19 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
     for (int iev=0;iev<nev;++iev) {
       //if (!evts[iev]->IsPrimary()) continue;
       
-      int icls = evts[iev]->Class();
+      int icls = _clss[ivar][iev];
       
       int ibin = _bins[ivar][iev];
       
       //printf("icls = %i, ibin = %i, weight = %5f, transtarget = %5f, transtarget2 = %5f\n",icls,ibin, evts[iev]->Weight(),evts[iev]->TransTarget(tgtidx),evts[iev]->TransTarget2(tgtidx));
       
-      assert(ibin<int(nbins));
+      //assert(ibin<int(nbins));
       
       ++_ns[ivar][ibin];
       
       _wscls[ivar][ibin][icls] += evts[iev]->Weight();            
 
-      _tgts[ivar][ibin][tgtidx] += evts[iev]->TransTarget(tgtidx);
+      _tgts[ivar][ibin] += evts[iev]->TransTarget(tgtidx);
       _tgt2s[ivar][ibin] += evts[iev]->TransTarget2(tgtidx);        
       
     } 
@@ -1761,7 +1863,7 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
       _sumwscls[ivar][0][icls] = _wscls[ivar][0][icls];
     }
     _sumns[ivar][0] = _ns[ivar][0];
-    _sumtgts[ivar][0][tgtidx] = _tgts[ivar][0][tgtidx];
+    _sumtgts[ivar][0] = _tgts[ivar][0];
     _sumtgt2s[ivar][0] = _tgt2s[ivar][0];    
     
     for (unsigned int ibin=1; ibin<nbins; ++ibin) {      
@@ -1769,26 +1871,26 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
 	_sumwscls[ivar][ibin][icls] = _sumwscls[ivar][ibin-1][icls] + _wscls[ivar][ibin][icls];
       }
       _sumns[ivar][ibin] = _sumns[ivar][ibin-1] + _ns[ivar][ibin];
-      _sumtgts[ivar][ibin][tgtidx] = _sumtgts[ivar][ibin-1][tgtidx] + _tgts[ivar][ibin][tgtidx];  
+      _sumtgts[ivar][ibin] = _sumtgts[ivar][ibin-1] + _tgts[ivar][ibin];  
       _sumtgt2s[ivar][ibin] = _sumtgt2s[ivar][ibin-1] + _tgt2s[ivar][ibin];  
     }
     
     //int n = sumns[ivar][nbins-1];
 //     float sumw = _sumws[ivar][nbins-1];
 //     float sumw2 = _sumws2[ivar][nbins-1];
-    std::vector<float> sumwscls(fStaticTgts.getSize());
-    for (int icls=0; icls<ncls; ++icls) {
-      sumwscls[icls] = _sumwscls[ivar][nbins-1][icls];
-    }
+//     std::vector<float> sumwscls(fStaticTgts.getSize());
+//     for (int icls=0; icls<ncls; ++icls) {
+//       sumwscls[icls] = _sumwscls[ivar][nbins-1][icls];
+//     }
     
-    std::vector<float> sumtgt(fNTargets);
+    //std::vector<float> sumtgt(fNTargets);
     //float sumtgtmag2 = 0.;
 
-    sumtgt[tgtidx] = _sumtgts[ivar][nbins-1][tgtidx];
-    //sumtgtmag2 += _sumtgts[ivar][nbins-1][tgtidx]*_sumtgts[ivar][nbins-1][tgtidx];      
+    const double sumtgt = _sumtgts[ivar][nbins-1];
+    //sumtgtmag2 += _sumtgts[ivar][nbins-1]*_sumtgts[ivar][nbins-1];      
     
-    float sumtgt2 = _sumtgt2s[ivar][nbins-1];      
-    
+    const double sumtgt2 = _sumtgt2s[ivar][nbins-1];      
+     
     //weighted variance of target in full dataset
     //float fullvariance = sumtgt2 - sumtgtmag2/sumw;
     //float fullvariancevar = fullvariance*fullvariance/sumw2/sumw2;
@@ -1806,7 +1908,8 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
   //  float sumwright=0.;
     int bestbin=0;
     
-    double fulldiff = -0.5*sumtgt[tgtidx]*sumtgt[tgtidx]/sumtgt2;
+    const double fulldiff = std::min(0.,-0.5*sumtgt*sumtgt/sumtgt2);
+    //const double fulldiff = -0.5*sumtgt*sumtgt/sumtgt2;
     
     //printf("start heavy loop\n");
     //loop over all bins and compute improvement in weighted variance of target for each split
@@ -1815,21 +1918,27 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
       
       //if (sumtgt2==0.) continue;
       
-      double leftdiff = -0.5*_sumtgts[ivar][ibin][tgtidx]*_sumtgts[ivar][ibin][tgtidx]/_sumtgt2s[ivar][ibin];
+      double leftdiff = std::min(0.,-0.5*_sumtgts[ivar][ibin]*_sumtgts[ivar][ibin]/_sumtgt2s[ivar][ibin]);
+      //double leftdiff = -0.5*_sumtgts[ivar][ibin]*_sumtgts[ivar][ibin]/_sumtgt2s[ivar][ibin];
+      
       //if (_sumtgt2s[ivar][ibin]==0.) continue;
       
-      float righttgtsum = sumtgt[tgtidx] - _sumtgts[ivar][ibin][tgtidx];
-      float righttgt2sum = sumtgt2 - _sumtgt2s[ivar][ibin];
+      double righttgtsum = sumtgt - _sumtgts[ivar][ibin];
+      double righttgt2sum = sumtgt2 - _sumtgt2s[ivar][ibin];
       
-      double rightdiff = -0.5*righttgtsum*righttgtsum/righttgt2sum;
+      double rightdiff = std::min(0.,-0.5*righttgtsum*righttgtsum/righttgt2sum);
+      //double rightdiff = -0.5*righttgtsum*righttgtsum/righttgt2sum;
+      
       //if (righttgt2sum==0.) continue;
             
       //weighted improvement in variance from this split     
      _bsepgains[ivar][ibin] = fulldiff - leftdiff - rightdiff;
+     
+    // printf("fulldiff = %5f, leftdiff = %5f, rightdiff = %5f, sepgain = %5f\n",fulldiff,leftdiff,rightdiff,_bsepgains[ivar][ibin]);
 
       
     }
-    
+     
     //printf("start final loop\n");
     //loop over computed variance improvements and select best split, respecting also minimum number of events per node
     //This loop cannot auto-vectorize, at least in gcc 4.6x due to the mixed type conditional, but it's relatively fast
@@ -1878,7 +1987,7 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
 	
 	bool passminweights = true;
 	for (int icls=0; icls<ncls; ++icls) {
-	  if (_sumwscls[ivar][ibin][icls]<fMinWeights[icls] || (sumwscls[icls] - _sumwscls[ivar][ibin][icls])<fMinWeights[icls]) {
+	  if (_sumwscls[ivar][ibin][icls]<fMinWeights[icls] || (_sumwscls[ivar][nbins-1][icls] - _sumwscls[ivar][ibin][icls])<fMinWeights[icls]) {
 	    passminweights = false;
 	  }
 	}
@@ -2071,6 +2180,8 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
   
   assert(_nlefts[bestvar]==nleft);
   assert(_nrights[bestvar]==nright);
+  
+  //printf("nleft = %i, nright = %i\n",nleft,nright);
   
   
   double bestcutval = _cutvals[bestvar];
@@ -2303,6 +2414,7 @@ double RooHybridBDTAutoPdf::EvalLossRooFit() {
     double pdfval = static_cast<RooAbsReal*>(fStaticPdfsClones[ithread].at(evcls))->getValV(&fParmSetClones[ithread]);
     
     //nllval += -weight*log(pdfval);
+    //nllvals[ithread] += -weight*vdt::fast_logf(pdfval);
     nllvals[ithread] += -weight*log(pdfval);
     
     if (RooAbsReal::numEvalErrors()>0 || RooAbsPdf::evalError() || pdfval<0.) {
@@ -2438,6 +2550,7 @@ double RooHybridBDTAutoPdf::EvalLoss(HybridGBRForest *forest, double lambda, con
     fEvts[ievt]->SetPdfVal(pdfval);
     
     //nllval += -weight*log(pdfval);
+    //nllvals[ithread] += -weight*vdt::fast_logf(pdfval);
     nllvals[ithread] += -weight*log(pdfval); 
     
     
@@ -3076,11 +3189,13 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForest *forest) {
     //double pdfval = static_cast<RooAbsReal*>(fStaticPdfs.at(evcls))->getValV(&parmset);
     double pdfval = fEvts[iev]->PdfVal();
     
-    double invpdf = 1.0/pdfval;
+    //double invpdf = 1.0/pdfval;
+    double invpdf = vdt::fast_inv(pdfval);
+    //double invpdf = vdt::fast_invf(pdfval);
     double invpdfsq = invpdf*invpdf;
     
-    double fval = fEvts[iev]->Target(0);
-    double flim = 0. + 0.5*(1.0-0.)*(sin(fval)+1.0);
+    //double fval = fEvts[iev]->Target(0);
+    //double flim = 0. + 0.5*(1.0-0.)*(sin(fval)+1.0);
     //double flim = 0. + 0.5*(1.0-0.)*(atan(fval)+1.0)*2.0/TMath::Pi();
     
     //double flim = TMath::Pi()/2.0 + atan(fval)/TMath::Pi();
@@ -3090,7 +3205,7 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForest *forest) {
     //double flim = 0.5 + atan(fval)/TMath::Pi();    
     //nmcs[ithread] += 1.0 - fval;
     //nmcs[ithread] += weight*1.0/(1.0+exp(fval));
-    nmcs[ithread] += weight*(1.0-flim);
+    //nmcs[ithread] += weight*(1.0-flim);
     //nmcs[ithread] += weight*(1.0-fval);
       
     for (unsigned int iidx=0; iidx<fOuterIndices[evcls].size(); ++iidx) {
@@ -3671,7 +3786,7 @@ double RooHybridBDTAutoPdf::Derivative1Fast(RooAbsReal *function, double current
   var->setVal(startval-step);
   double valdown = function->getValV(nset);  
   
-  double drv = (valup-valdown)/(2.0*step);
+  double drv = (valup-valdown)*vdt::fast_inv(2.0*step);
   
   var->setVal(startval);
   
@@ -3691,7 +3806,7 @@ double RooHybridBDTAutoPdf::Derivative2Fast(RooAbsReal *function, double current
   var->setVal(startval-step);
   double valdown1 = function->getValV(nset);  
 
-  double drv1 = (valup1+valdown1-2.0*valnom)/(step*step);
+  double drv1 = (valup1+valdown1-2.0*valnom)*vdt::fast_inv(step*step);
   
   var->setVal(startval);
   
@@ -3831,7 +3946,7 @@ double RooHybridBDTAutoPdf::Derivative2(RooAbsReal *function, RooRealVar *var1, 
   double drv1 = (valupup1+valdowndown1-valupdown1-valdownup1)/(4.0*stepa1*stepb1);
   
   
-  
+     
   
   double stepa2 = 0.5*stepa;
   double stepb2 = 0.5*stepb;  

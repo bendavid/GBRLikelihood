@@ -66,8 +66,8 @@ protected:
   RooRealProxy _real;
   Double_t     _low;
   Double_t     _high;
-  Double_t     _scale;
-  Double_t     _offset;
+  double        _scale;
+  double        _offset;
   
   
 private:
@@ -276,7 +276,18 @@ public:
   
 protected:
 
+//   typedef alignas(32) int int;
+//   typedef alignas(32) float float;
+//   typedef alignas(32) float double;
 
+//   typedef int __attribute__ ((aligned (32))) int;
+//   typedef float __attribute__ ((aligned (32))) float;
+//   typedef double __attribute__ ((aligned (32))) double;
+
+//   typedef int int;
+//   typedef float float;
+//   typedef double double;  
+  
   void BuildQuantiles(int nvars, double sumw);
   void UpdateTargets(int nvars, double sumw, int itree);
   void FillDerivatives();
@@ -409,45 +420,52 @@ protected:
   double                   fdLdR;
   
 
-  std::vector<float> _sepgains; 
-  std::vector<float> _sepgainsigs; 
-  std::vector<float> _cutvals;  
-  std::vector<int> _nlefts; 
-  std::vector<int> _nrights; 
-  std::vector<float> _sumwlefts; 
-  std::vector<float> _sumwrights;   
-  std::vector<float> _sumtgtlefts; 
-  std::vector<float> _sumtgtrights; 
-  std::vector<float> _leftvars; 
-  std::vector<float> _rightvars;       
-  std::vector<float> _fullvars; 
-  std::vector<int>   _bestbins; 
+  float *_sepgains; 
+  float *_sepgainsigs; 
+  float *_cutvals;  
+  int *_nlefts; 
+  int *_nrights; 
+  float *_sumwlefts; 
+  float *_sumwrights;   
+  float *_sumtgtlefts; 
+  float *_sumtgtrights; 
+  float *_leftvars; 
+  float *_rightvars;       
+  float *_fullvars; 
+  int *_bestbins; 
   
   
-  std::vector<std::vector<float> > _ws; 
-  std::vector<std::vector<float> > _ws2; 
-  std::vector<std::vector<std::vector<float> > > _wscls; 
-  std::vector<std::vector<int> > _ns; 
-  std::vector<std::vector<int> > _nsd;   
-  std::vector<std::vector<std::vector<float> > > _tgts; 
-  std::vector<std::vector<float> > _tgt2s; 
-  std::vector<std::vector<float> > _sumws; 
-  std::vector<std::vector<float> > _sumws2;       
-  std::vector<std::vector<std::vector<float> > > _sumwscls; 
-  std::vector<std::vector<int> > _sumns; 
-  std::vector<std::vector<int> > _sumnsd;   
-  std::vector<std::vector<std::vector<float> > > _sumtgts; 
-  std::vector<std::vector<float> > _sumtgt2s; 
-  std::vector<std::vector<float> > _varvals; 
-  std::vector<std::vector<float> > _bsepgains; 
-  std::vector<std::vector<float> > _bsepgainsigs;       
+  double **_ws; 
+  double **_ws2; 
+  double ***_wscls; 
+  int **_ns; 
+  int **_nsd;   
+  double **_tgts; 
+  double **_tgt2s; 
+  double **_sumws; 
+  double **_sumws2;       
+  double ***_sumwscls; 
+  int **_sumns; 
+  int **_sumnsd;   
+  double **_sumtgts; 
+  double **_sumtgt2s; 
+  float **_varvals; 
+  float **_bsepgains; 
+  float **_bsepgainsigs;       
   
-  std::vector<std::vector<int> > _quants; 
-  std::vector<std::vector<int> > _bins; 
+  int **_quants; 
+  int **_bins; 
+  int **_clss; 
   
-  std::vector<std::vector<float> > fQuantileMaps;     
+  float **fQuantileMaps;     
   
   
+//   float *a;
+//   float *b;
+//   float *c;
+//   
+//   static void vtest(const float **ra, const float **rb, float **rc);
+   
 //   float *_sepgains; //!
 //   float *_sepgainsigs; //!
 //   float *_cutvals;  //!
@@ -486,8 +504,10 @@ protected:
   
   std::vector<HybridGBREvent*> fEvts;
   
+  
 private:
-  ClassDef(RooHybridBDTAutoPdf,1) // Exponential PDF
+  //ClassDef(RooHybridBDTAutoPdf,1) // Exponential PDF
 };
+
 
 #endif
