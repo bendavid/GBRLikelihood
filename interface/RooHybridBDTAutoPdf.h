@@ -324,6 +324,7 @@ protected:
   double Derivative2(RooAbsReal *function, RooRealVar *var, RooArgSet *nset=0, double step=1e-3);
   double Derivative2(RooAbsReal *function, RooRealVar *var1,RooRealVar *var2, RooArgSet *nset=0, double stepa=1e-3, double stepb=1e-3);
   
+  
   RooArgList fCondVars;
   RooArgList fParmVars;
   RooArgList fTgtVars;
@@ -401,8 +402,8 @@ protected:
   std::vector<double>       fMinWeights;
   double                    fShrinkage;
   int                       fNTrees;
-  int                       fNQuantiles;
-  unsigned int              fNBinsMax;
+  const int                 fNQuantiles;
+  const unsigned int        fNBinsMax;
   float                     fTransitionQuantile;
   double                    fMinCutSignificance;
   double                    fMinCutSignificanceMulti;
@@ -454,8 +455,12 @@ protected:
   float **_bsepgainsigs;       
   
   int **_quants; 
-  int **_bins; 
-  int **_clss; 
+  int **_binquants; 
+  
+  int *_clss; 
+  double *_tgtvals;
+  double *_tgt2vals;
+  double *_weightvals;
   
   float **fQuantileMaps;     
   

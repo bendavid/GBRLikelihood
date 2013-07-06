@@ -67,6 +67,7 @@
 #include "vdt/vdtMath.h"
 #include <stdlib.h>
 #include <malloc.h>
+//#include "../interface/GBRArrayUtils.h"
 
 ClassImp(RooTreeConvert)
 
@@ -746,21 +747,21 @@ RooHybridBDTAutoPdf::RooHybridBDTAutoPdf(const char *name, const char *title, Ro
   
  
    
-  //initialize arrays
+  //initialize arrays (ensure 32 byte alignment for avx vector instructions)
 
-  _sepgains = new float[nvars];
-  _sepgainsigs = new float[nvars];
-  _cutvals = new float[nvars];
-  _nlefts = new int[nvars];
-  _nrights = new int[nvars];
-  _sumwlefts = new float[nvars];
-  _sumwrights = new float[nvars];
-  _sumtgtlefts = new float[nvars];
-  _sumtgtrights = new float[nvars];
-  _leftvars = new float[nvars];
-  _rightvars = new float[nvars];  
-  _fullvars = new float[nvars];  
-  _bestbins = new int[nvars];
+  _sepgains = (float*)memalign(32, nvars*sizeof(float));
+  _sepgainsigs = (float*)memalign(32, nvars*sizeof(float));
+  _cutvals = (float*)memalign(32, nvars*sizeof(float));
+  _nlefts = (int*)memalign(32, nvars*sizeof(int));
+  _nrights = (int*)memalign(32, nvars*sizeof(int));
+  _sumwlefts = (float*)memalign(32, nvars*sizeof(float));
+  _sumwrights = (float*)memalign(32, nvars*sizeof(float));
+  _sumtgtlefts = (float*)memalign(32, nvars*sizeof(float));
+  _sumtgtrights = (float*)memalign(32, nvars*sizeof(float));
+  _leftvars = (float*)memalign(32, nvars*sizeof(float));
+  _rightvars = (float*)memalign(32, nvars*sizeof(float));  
+  _fullvars = (float*)memalign(32, nvars*sizeof(float));  
+  _bestbins = (int*)memalign(32, nvars*sizeof(int));
 
  
   
@@ -783,44 +784,123 @@ RooHybridBDTAutoPdf::RooHybridBDTAutoPdf(const char *name, const char *title, Ro
   _bsepgains = new float*[nvars];
   _bsepgainsigs = new float*[nvars];
   
+  _binquants  = new int*[nvars];  
   _quants  = new int*[nvars];  
-  _bins  = new int*[nvars];  
-  _clss  = new int*[nvars];
+  
+  _clss  = (int*)memalign(32, nev*sizeof(int));
+  _tgtvals  = (double*)memalign(32, nev*sizeof(double));
+  _tgt2vals  = (double*)memalign(32, nev*sizeof(double));
+  _weightvals  = (double*)memalign(32, nev*sizeof(double));
   
   fQuantileMaps = new float*[nvars];  
   
   
   for (int ivar=0; ivar<nvars; ++ivar) {
+    _ws[ivar] = (double*)memalign(32, fNBinsMax*sizeof(double));
+    _ws2[ivar] = (double*)memalign(32, fNBinsMax*sizeof(double));
+    _ns[ivar] = (int*)memalign(32, fNBinsMax*sizeof(int));
+    _tgts[ivar] = (double*)memalign(32, fNBinsMax*sizeof(double));
+    _tgt2s[ivar] = (double*)memalign(32, fNBinsMax*sizeof(double));  
+    _sumws[ivar] = (double*)memalign(32, fNBinsMax*sizeof(double));
+    _sumws2[ivar] = (double*)memalign(32, fNBinsMax*sizeof(double));
+    _sumns[ivar] = (int*)memalign(32, fNBinsMax*sizeof(int));
+    _sumtgts[ivar] = (double*)memalign(32, fNBinsMax*sizeof(double));
+    _sumtgt2s[ivar] = (double*)memalign(32, fNBinsMax*sizeof(double));
+    _varvals[ivar] = (float*)memalign(32, fNBinsMax*sizeof(float));
+    _bsepgains[ivar] = (float*)memalign(32, fNBinsMax*sizeof(float));
+    _bsepgainsigs[ivar] = (float*)memalign(32, fNBinsMax*sizeof(float));
+    
+    _wscls[ivar] = new double*[ncls];
+    _sumwscls[ivar] = new double*[ncls];    
+    
+    _binquants[ivar] = (int*)memalign(32, fNBinsMax*sizeof(int));
+    _quants[ivar] = (int*)memalign(32, nev*sizeof(int));
+    
+    fQuantileMaps[ivar] = (float*)memalign(32, fNQuantiles*sizeof(float));
+    
+
+    for (int icls=0; icls<ncls; ++icls) {
+      _wscls[ivar][icls] = (double*)memalign(32, fNBinsMax*sizeof(double));
+      _sumwscls[ivar][icls] = (double*)memalign(32, fNBinsMax*sizeof(double));
+    }
+    
+  }
+  
+/*  _sepgains = new float[nvars];
+  _sepgainsigs = new float[nvars];
+  _cutvals = new float[nvars];
+  _nlefts = new int[nvars];
+  _nrights = new int[nvars];
+  _sumwlefts = new float[nvars];
+  _sumwrights = new float[nvars];
+  _sumtgtlefts = new float[nvars];
+  _sumtgtrights = new float[nvars];
+  _leftvars = new float[nvars];
+  _rightvars = new float[nvars];
+  _fullvars = new float[nvars];
+  _bestbins = new int[nvars];
+
+ 
+  
+  
+  
+  _ws = new double*[nvars];
+  _ws2 = new double*[nvars];
+  _wscls = new double**[nvars];
+  _ns = new int*[nvars];
+  _nsd = new int*[nvars];
+  _tgts = new double*[nvars];
+  _tgt2s = new double*[nvars];
+  _sumws = new double*[nvars];
+  _sumws2 = new double*[nvars];
+  _sumwscls = new double**[nvars];
+  _sumns = new int*[nvars];
+  _sumtgts = new double*[nvars];
+  _sumtgt2s = new double*[nvars];
+  _varvals = new float*[nvars];
+  _bsepgains = new float*[nvars];
+  _bsepgainsigs = new float*[nvars];
+  
+  _quants = new int*[nvars];
+  _bins = new int*[nvars];
+  _clss = new int[nvars];
+  _tgtvals  = new double[nev];
+  _tgt2vals  = new double[nev];
+  _weightvals  = new double[nev];
+  
+  fQuantileMaps = new float*[nvars];
+  
+  
+  for (int ivar=0; ivar<nvars; ++ivar) {
     _ws[ivar] = new double[fNBinsMax];
-    _ws2[ivar] = new double[fNBinsMax];    
+    _ws2[ivar] = new double[fNBinsMax];
     _ns[ivar] = new int[fNBinsMax];
     _tgts[ivar] = new double[fNBinsMax];
-    _tgt2s[ivar] = new double[fNBinsMax];  
+    _tgt2s[ivar] = new double[fNBinsMax];
     _sumws[ivar] = new double[fNBinsMax];
     _sumws2[ivar] = new double[fNBinsMax];
     _sumns[ivar] = new int[fNBinsMax];
     _sumtgts[ivar] = new double[fNBinsMax];
     _sumtgt2s[ivar] = new double[fNBinsMax];
-    _varvals[ivar] = new float[fNBinsMax];  
-    _bsepgains[ivar] = new float[fNBinsMax];      
-    _bsepgainsigs[ivar] = new float[fNBinsMax];      
+    _varvals[ivar] = new float[fNBinsMax];
+    _bsepgains[ivar] = new float[fNBinsMax];
+    _bsepgainsigs[ivar] = new float[fNBinsMax];
     
-    _wscls[ivar] = new double*[fNBinsMax];
-    _sumwscls[ivar] = new double*[fNBinsMax];    
+    _wscls[ivar] = new double*[ncls];
+    _sumwscls[ivar] = new double*[ncls];
     
     _quants[ivar] = new int[nev];
-    _bins[ivar] = new int[nev];
-    _clss[ivar] = new int[nev];
+    _bins[ivar] = new int[fNBinsMax];
+    
     
     fQuantileMaps[ivar] = new float[fNQuantiles];
     
-
-    for (int unsigned ibin=0; ibin<fNBinsMax; ++ibin) {
-      _wscls[ivar][ibin] = new double[ncls];
-      _sumwscls[ivar][ibin] = new double[ncls];
-    }
+    for (int icls=0; icls<ncls; ++icls) {
+      _wscls[ivar][icls] = new double[fNBinsMax];
+      _sumwscls[ivar][icls] = new double[fNBinsMax];
+    }    
     
-  }  
+  }*/   
   
   
   
@@ -1070,7 +1150,7 @@ void RooHybridBDTAutoPdf::UpdateTargets(int nvars, double sumw, int itree) {
         double startval = var->getVal();
         double step = 1e-3*var->getError();
         
-        RooAbsReal *func = static_cast<RooAbsReal*>(fStaticPdfs.at(evcls));
+        RooAbsReal *func = static_cast<RooAbsReal*>(fStaticPdfsClones[ithread].at(evcls));
         
         var->setVal(startval + step);
         double upval = func->getValV(&fParmSetClones[ithread]);
@@ -1548,17 +1628,31 @@ const HybridGBRForest *RooHybridBDTAutoPdf::TrainForest(int ntrees, bool reusefo
     UpdateTargets(nvars,sumw, itree); 
 
     int maxtreesize = 0;
+    
+    std::vector<int> treesizes(fNTargets);
+
     for (int itgt=0; itgt<fNTargets; ++itgt) {
       int treetgt = static_cast<RooGBRTarget*>(fTgtVars.at(itgt))->Index();
-      forest->Trees()[treetgt].push_back(HybridGBRTree());
+      forest->Trees()[treetgt].push_back(HybridGBRTree()); 
+    }
+    
+    for (int itgt=0; itgt<fNTargets; ++itgt) {
+      int treetgt = static_cast<RooGBRTarget*>(fTgtVars.at(itgt))->Index();
       HybridGBRTree &tree = forest->Trees()[treetgt].back();      
       TrainTree(fEvts,sumw,tree,nvarstrain,0.,0,limits,itgt);
       int treesize = tree.Responses().size();
-      if (treesize>maxtreesize) {
-	maxtreesize = treesize;
-      }
+      treesizes[itgt] = treesize;
       //printf("itgt = %i, treesize = %i\n",itgt,int(tree.Responses().size()));
     }
+    
+    for (int itgt=0; itgt<fNTargets; ++itgt) {
+      int treesize = treesizes[itgt];
+      if (treesize>maxtreesize) {
+	maxtreesize = treesize;
+      }      
+    }
+    
+    
     printf("maxtreesize = %i\n",maxtreesize);
 
     double originalshrinkage = fShrinkage;
@@ -1645,7 +1739,7 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
   int thisidx = tree.CutIndices().size();    
   
   //number of events input to node
-  int nev = evts.size();
+  const int nev = evts.size();
   
   //index of best cut variable
   int bestvar = 0;
@@ -1679,36 +1773,39 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
   
 
   
-        
-  
+//   std::vector<int> threadnums(nvars);
+//   std::vector<int> nbinsvar(nvars);
+//   std::vector<double> timesvar(nvars);
+//   
   //float *__restrict *__restrict__ sumws = _sumws;  
   
+//   printf("start split search loop\n");
+//   TStopwatch clockloop;
+//   clockloop.Start();
+  
+   
+  //printf("first parallel loop\n");
+  //printf("nev = %i\n",nev);
+  //fill temporary array of quantiles (to allow auto-vectorization of later loops)
+  #pragma omp parallel for
+  for (int iev = 0; iev<nev; ++iev) {
+    _clss[iev] = evts[iev]->Class();
+    _tgtvals[iev] = evts[iev]->TransTarget(tgtidx);
+    _tgt2vals[iev] = evts[iev]->TransTarget2(tgtidx);
+    _weightvals[iev] = evts[iev]->Weight();
+    for (int ivar=0; ivar<nvars; ++ivar) {
+      _quants[ivar][iev] = evts[iev]->Quantile(ivar);   
+      //printf("quant = %i\n",_quants[ivar][iev]);
+    }
+  }  
+  
+  //printf("second parallel loop\n");
   //trivial open-mp based multithreading of loop over input variables
   //The loop is thread safe since each iteration writes into its own
   //elements of the 2-d arrays
-  #pragma omp parallel for
+  #pragma omp parallel for schedule(dynamic,1)
   for (int ivar=0; ivar<nvars; ++ivar) {
-          
-    //printf("loop over ivar = %i\n",ivar);
-    
-//     if (numprimary==0) {
-//       printf("no primary events, skipping, nev = %i, numprimary = %i\n",nev,numprimary);
-//       _sepgains[ivar]=-99.;
-//       continue;
-//     }    
-    
-//     double sigmanode = std::min(0.4,fSigmaConsts[ivar]*sqrt(1.0/avgp));
-//     //double sigmanode = fSigmaConsts[ivar]*sqrt(1.0/avgp);
-//     //double sigmanode = std::min(2.2,fSigmaConsts[ivar]*pow(1.0/avgp,1.0/fCondVars.getSize()));
-//     if (std::isnan(sigmanode)) sigmanode = 0.7;
-    //printf("sigmanode = %5f, bounds = %5f, %5f\n",sigmanode, limits[ivar].first,limits[ivar].second);
-    
-    
-    //fill temporary array of quantiles (to allow auto-vectorization of later loops)
-    for (int iev = 0; iev<nev; ++iev) {
-      _quants[ivar][iev] = evts[iev]->Quantile(ivar);
-      _clss[ivar][iev] = evts[iev]->Class();
-    }
+             
     
     int minquant = std::numeric_limits<int>::max();
     int maxquant = 0;
@@ -1718,42 +1815,9 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
     for (int iev = 0; iev<nev; ++iev) {
       if (_quants[ivar][iev]<minquant) minquant = _quants[ivar][iev];
       if (_quants[ivar][iev]>maxquant) maxquant = _quants[ivar][iev];
-//       if (_quants[ivar][iev]<minquant) minquant = _quants[ivar][iev];
-//       if (_quants[ivar][iev]>maxquant) maxquant = _quants[ivar][iev];
+
     }    
-    
-/*    if (fQuantileMaps[ivar][minquant]<=limits[ivar].first) {
-      printf("fixing minquant, minquant = %i\n",minquant);
-      for (int iquant=0; iquant<fNQuantiles; ++iquant) {
-        if (fQuantileMaps[ivar][iquant]>limits[ivar].first) {
-          minquant = iquant;
-          break;
-        } 
-      }
-    }
-    
-    if (fQuantileMaps[ivar][maxquant]>limits[ivar].second) {
-      printf("fixing maxquant, maxquant = %i, maxval = %5f, limitup = %5f\n",maxquant, fQuantileMaps[ivar][maxquant],limits[ivar].second);
-      for (int iquant=fNQuantiles-1; iquant>=0; --iquant) {
-        //printf("iquant = %i\n",iquant);
-        if (fQuantileMaps[ivar][iquant]<=limits[ivar].second) {
-          maxquant = iquant;
-          break;
-        } 
-      }
-    }   */ 
-      
-    
-    
-/*    for (int iev = 0; iev<nev; ++iev) {
-      assert(_quants[ivar][iev]>=minquant);
-      assert(_quants[ivar][iev]<=maxquant);
-//       if (_quants[ivar][iev]<minquant) _quants[ivar][iev] = minquant;
-//       if (_quants[ivar][iev]>maxquant) _quants[ivar][iev] = maxquant;
-    }    */   
-//     
-     //printf("finished with quants: minquant = %i, maxquant = %i\n",minquant,maxquant);
-    
+
     //calculate offset and scaling (powers of 2) to reduce the total number of quantiles
     //to the fNBinsMax for the search for the best split value
     int offset = minquant;
@@ -1764,59 +1828,60 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
       //bincount >>= 1;
       bincount = ((maxquant-offset)>>pscale) + 1;
     }    
-//    int scale = 1<<pscale;
-    
-    //final number of bins (guaranteed to be <= fNBinsMax) for best split search
-    //const unsigned int nbins = ((maxquant-offset)>>pscale) + 1;
-    //const unsigned int nbins = ((maxquant-offset)>>pscale);
-    //const unsigned int nbins = ((maxquant-offset+1)>>pscale);
+
     const unsigned int nbins = ((maxquant-offset)>>pscale) + 1;
     assert(nbins<=fNBinsMax);
     
-    //printf("offset = %i, maxquant = %i, pscale = %i, nbins = %i\n",offset, maxquant, pscale,nbins);
-    
-    //printf("start init loop, nbins = %i\n",nbins);
+
 
     int ncls = fStaticPdfs.getSize();
     
-    //zero arrays where necessary and compute map between bin numbers
-    //and variable cut values
-    //This loop should auto-vectorize in appropriate compiler/settings
+    //zero arrays where necessary and 
+    This loop should auto-vectorize in appropriate compiler/settings
     for (unsigned int ibin=0; ibin<nbins; ++ibin) {
-      //printf("loop ivar = %i, ibin = %i\n",ivar,ibin);
-
-      for (int icls=0; icls<ncls; ++icls) {
-	_wscls[ivar][ibin][icls] = 0.;
-      }
       _ns[ivar][ibin] = 0;
       _tgts[ivar][ibin] = 0.;
-      _tgt2s[ivar][ibin] = 0.;
+      _tgt2s[ivar][ibin] = 0.;     
       
-      int quant = ((1+ibin)<<pscale) + offset - 1;
-      //int quant = (ibin<<pscale) + offset;
-      //if (quant>=fNQuantiles
-      
-      if (quant>=fNQuantiles) quant = fNQuantiles-1;
-      
-      //printf("access quantile map, ivar = %i, ibin = %i, quant = %i\n",ivar,ibin,quant);
-      _varvals[ivar][ibin] = fQuantileMaps[ivar][quant];
-      //printf("done access quantile map\n");
-      //printf("ibin = %i, nbins = %i, quant = %i, fNQuantiles = %i,varval = %5f\n",ibin,nbins,quant,fNQuantiles,_varvals[ivar][ibin]);
-      
-      //printf("pscale = %i, ibin = %i, quant = %i, fNQuantiles = %i\n",pscale, ibin,quant,fNQuantiles);
-      //assert(quant<fNQuantiles);
-      
-      _bsepgains[ivar][ibin] = -std::numeric_limits<float>::max();
-
+     _bsepgains[ivar][ibin] = -std::numeric_limits<float>::max();
     }
+    
+   // GBRArrayUtils::InitArrays(_ns[ivar],_tgts[ivar],_tgt2s[ivar],_bsepgains[ivar],nbins);
+    
+    //printf("touch wscls\n");
+    //the inner loop here should also vectorize
+    for (int icls=0; icls<ncls; ++icls) {
+      for (unsigned int ibin=0; ibin<nbins; ++ibin) {
+	  _wscls[ivar][icls][ibin] = 0.;
+      }
+    }    
+    //printf("done wscls\n");
+    
+    
+    //compute map between bin numbers
+    //and variable cut values
+    
+    //printf("quant manipulation\n");
+    //this loop should auto-vectorize
+    for (unsigned int ibin=0; ibin<nbins; ++ibin) { 
+      int quant = ((1+ibin)<<pscale) + offset - 1;
+      _binquants[ivar][ibin] = std::min(quant, fNQuantiles-1);
+    }
+    
+    //this loop won't auto-vectorize because it's another gather operation (maybe in avx2 and gcc>4.7)
+    for (unsigned int ibin=0; ibin<nbins; ++ibin) { 
+      int quant = _binquants[ivar][ibin];
+      _varvals[ivar][ibin] = fQuantileMaps[ivar][quant];
+    }
+    //printf("done quant manipulation\n");
     
     //printf("compute bins\n");
     
     //compute reduced bin value for each event using bit-shift operations
     //This loop should auto-vectorize in appropriate compiler/settings
-    for (int iev=0;iev<nev;++iev) {
-      _bins[ivar][iev] = (_quants[ivar][iev]-offset)>>pscale;
-    }
+//     for (int iev=0;iev<nev;++iev) {
+//       _bins[ivar][iev] = (_quants[ivar][iev]-offset)>>pscale;
+//     }
 
       
     //printf("filling histogram-style arrays\n");
@@ -1826,16 +1891,14 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
     //This loop is one of the most expensive in the algorithm for large training samples
     //This loop can unfortunately not be vectorized because the memory addressed 
     //are computed within the loop iteration
-    //JOSH: Is this already fundamentally making vectorization impossible because the addresses to be incremented are
-    //scattered, or is it just that the compiler can't resolve the dependencies?  If the latter, can we force gcc to vectorize
-    //this loop)
+    //JOSH: Once the data-dependency checks are appropriately bypassed, this should actually vectorize, but only
+    //for avx2 targets which support vectorized gather instructions
 //    int nevd = 0;
     for (int iev=0;iev<nev;++iev) {
       //if (!evts[iev]->IsPrimary()) continue;
       
-      int icls = _clss[ivar][iev];
-      
-      int ibin = _bins[ivar][iev];
+      int icls = _clss[iev];
+      int ibin = (_quants[ivar][iev]-offset)>>pscale;
       
       //printf("icls = %i, ibin = %i, weight = %5f, transtarget = %5f, transtarget2 = %5f\n",icls,ibin, evts[iev]->Weight(),evts[iev]->TransTarget(tgtidx),evts[iev]->TransTarget2(tgtidx));
       
@@ -1843,37 +1906,49 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
       
       ++_ns[ivar][ibin];
       
-      _wscls[ivar][ibin][icls] += evts[iev]->Weight();            
-
-      _tgts[ivar][ibin] += evts[iev]->TransTarget(tgtidx);
-      _tgt2s[ivar][ibin] += evts[iev]->TransTarget2(tgtidx);        
+      //printf("incrementing wscls: ivar = %i, icls = %i, ibin = %i, quant = %i\n",ivar,icls,ibin,_quants[ivar][iev]);
+      //printf("incrementing wscls\n");
+      _wscls[ivar][icls][ibin] += _weightvals[iev];            
+      //printf("done incrementing wscls\n");
+      
+      _tgts[ivar][ibin] += _tgtvals[iev];
+      _tgt2s[ivar][ibin] += _tgt2vals[iev];
       
     } 
-    
+       
 
-    
+      
     //printf("starting split search\n");
  
+    //printf("compute array integrals\n");
     //convert differential arrays to cumulative arrays by summing over
     //each element
     //loop cannot be vectorized because this is an iterative calculation
     _sumws[ivar][0] = _ws[ivar][0];
     _sumws2[ivar][0] = _ws2[ivar][0];
     for (int icls=0; icls<ncls; ++icls) {
-      _sumwscls[ivar][0][icls] = _wscls[ivar][0][icls];
+      _sumwscls[ivar][icls][0] = _wscls[ivar][icls][0];
     }
     _sumns[ivar][0] = _ns[ivar][0];
     _sumtgts[ivar][0] = _tgts[ivar][0];
     _sumtgt2s[ivar][0] = _tgt2s[ivar][0];    
     
     for (unsigned int ibin=1; ibin<nbins; ++ibin) {      
-      for (int icls=0; icls<ncls; ++icls) {
-	_sumwscls[ivar][ibin][icls] = _sumwscls[ivar][ibin-1][icls] + _wscls[ivar][ibin][icls];
-      }
       _sumns[ivar][ibin] = _sumns[ivar][ibin-1] + _ns[ivar][ibin];
       _sumtgts[ivar][ibin] = _sumtgts[ivar][ibin-1] + _tgts[ivar][ibin];  
       _sumtgt2s[ivar][ibin] = _sumtgt2s[ivar][ibin-1] + _tgt2s[ivar][ibin];  
     }
+    
+    //printf("cls array integrals\n");
+    for (int icls=0; icls<ncls; ++icls) {
+      for (unsigned int ibin=1; ibin<nbins; ++ibin) {  
+	_sumwscls[ivar][icls][ibin] = _sumwscls[ivar][icls][ibin-1] + _wscls[ivar][icls][ibin];
+      }
+    }    
+   // printf("done cls array integrals\n");
+    
+    
+    
     
     //int n = sumns[ivar][nbins-1];
 //     float sumw = _sumws[ivar][nbins-1];
@@ -1908,7 +1983,7 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
   //  float sumwright=0.;
     int bestbin=0;
     
-    const double fulldiff = std::min(0.,-0.5*sumtgt*sumtgt/sumtgt2);
+    const double fulldiff = std::min(0.,-0.5*sumtgt*sumtgt*vdt::fast_inv(sumtgt2));
     //const double fulldiff = -0.5*sumtgt*sumtgt/sumtgt2;
     
     //printf("start heavy loop\n");
@@ -1918,7 +1993,7 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
       
       //if (sumtgt2==0.) continue;
       
-      double leftdiff = std::min(0.,-0.5*_sumtgts[ivar][ibin]*_sumtgts[ivar][ibin]/_sumtgt2s[ivar][ibin]);
+      double leftdiff = std::min(0.,-0.5*_sumtgts[ivar][ibin]*_sumtgts[ivar][ibin]*vdt::fast_inv(_sumtgt2s[ivar][ibin]));
       //double leftdiff = -0.5*_sumtgts[ivar][ibin]*_sumtgts[ivar][ibin]/_sumtgt2s[ivar][ibin];
       
       //if (_sumtgt2s[ivar][ibin]==0.) continue;
@@ -1926,7 +2001,7 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
       double righttgtsum = sumtgt - _sumtgts[ivar][ibin];
       double righttgt2sum = sumtgt2 - _sumtgt2s[ivar][ibin];
       
-      double rightdiff = std::min(0.,-0.5*righttgtsum*righttgtsum/righttgt2sum);
+      double rightdiff = std::min(0.,-0.5*righttgtsum*righttgtsum*vdt::fast_inv(righttgt2sum));
       //double rightdiff = -0.5*righttgtsum*righttgtsum/righttgt2sum;
       
       //if (righttgt2sum==0.) continue;
@@ -1987,7 +2062,7 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
 	
 	bool passminweights = true;
 	for (int icls=0; icls<ncls; ++icls) {
-	  if (_sumwscls[ivar][ibin][icls]<fMinWeights[icls] || (_sumwscls[ivar][nbins-1][icls] - _sumwscls[ivar][ibin][icls])<fMinWeights[icls]) {
+	  if (_sumwscls[ivar][icls][ibin]<fMinWeights[icls] || (_sumwscls[ivar][icls][nbins-1] - _sumwscls[ivar][icls][ibin])<fMinWeights[icls]) {
 	    passminweights = false;
 	  }
 	}
@@ -2028,9 +2103,20 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
     //_rightvars[ivar] = (sumtgt2-_sumtgt2s[ivar][bestbin]) - (sumtgt-_sumtgts[ivar][bestbin])*(sumtgt-_sumtgts[ivar][bestbin])/(sumw-_sumws[ivar][bestbin]);
     _bestbins[ivar] = bestbin;
         
+     //printf("done var %i\n",ivar);
+//     
+//     watch.Stop();
+//     timesvar[ivar] = watch.RealTime();
   }
   
-
+//   clockloop.Stop();
+//   printf("end split search loop\n");
+//   
+//   
+//   for (int ivar=0; ivar<nvars; ++ivar) {
+//     printf("ivar = %i, ithread = %i, nbins = %i, time = %5e\n",ivar,threadnums[ivar],nbinsvar[ivar],timesvar[ivar]);
+//   }
+//   printf("clockloop = %5f\n",clockloop.RealTime());
   
   float globalsepgain = -std::numeric_limits<float>::max();
   for (int ivar=0; ivar<nvars; ++ivar) {
@@ -2060,6 +2146,10 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
   
   //printf("cutval = %5f\n",_cutvals[bestvar]);
   
+//   TStopwatch buildclock;
+//   buildclock.Start();
+//   
+//   printf("start filling vectors\n");
   
   //fill vectors of event pointers for left and right nodes below this one
   std::vector<HybridGBREvent*> leftevts;
@@ -2088,6 +2178,11 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
     }
     
   }
+  
+//   printf("done filling vectors\n");
+//   
+//   buildclock.Stop();
+//   printf("buildclock = %5e\n",buildclock.RealTime());
   
 //   for (std::vector<HybridGBREvent*>::const_iterator it = evts.begin(); it!=evts.end(); ++it) {
 //     if ((*it)->Var(bestvar)>_cutvals[bestvar]) {
@@ -2391,6 +2486,8 @@ double RooHybridBDTAutoPdf::EvalLossRooFit() {
   #pragma omp parallel for
   for (unsigned int ievt=0; ievt<fEvts.size(); ++ievt) {
 
+    if (ievt%100!=0) continue;
+    
     int ithread =  omp_get_thread_num();
     //int ithread =  0;
 
@@ -3946,7 +4043,7 @@ double RooHybridBDTAutoPdf::Derivative2(RooAbsReal *function, RooRealVar *var1, 
   double drv1 = (valupup1+valdowndown1-valupdown1-valdownup1)/(4.0*stepa1*stepb1);
   
   
-     
+      
   
   double stepa2 = 0.5*stepa;
   double stepb2 = 0.5*stepb;  

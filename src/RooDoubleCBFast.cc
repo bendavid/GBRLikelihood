@@ -9,6 +9,7 @@
 #include "RooRealVar.h"
 #include "RooRealConstant.h"
 #include "vdt/vdtMath.h"
+#include "../interface/GBRMath.h"
 
 using namespace RooFit;
 
@@ -57,14 +58,14 @@ using namespace RooFit;
      return vdt::fast_exp(-0.5*t*t);
    }else if(t<=-alpha1){
      double n1invalpha1 = n1*vdt::fast_inv(fabs(alpha1));
-     double A1 = pow(n1invalpha1,n1)*vdt::fast_exp(-alpha1*alpha1/2);
+     double A1 = gbrmath::fast_pow(n1invalpha1,n1)*vdt::fast_exp(-alpha1*alpha1/2);
      double B1 = n1invalpha1-fabs(alpha1);
-     return A1*pow(B1-t,-n1);
+     return A1*gbrmath::fast_pow(B1-t,-n1);
    }else if(t>=alpha2){
      double n2invalpha2 = n1*vdt::fast_inv(fabs(alpha2));
-     double A2 = pow(n2invalpha2,n2)*vdt::fast_exp(-alpha2*alpha2/2);
+     double A2 = gbrmath::fast_pow(n2invalpha2,n2)*vdt::fast_exp(-alpha2*alpha2/2);
      double B2 = n2invalpha2-fabs(alpha2);
-     return A2*pow(B2+t,-n2);
+     return A2*gbrmath::fast_pow(B2+t,-n2);
    }//else{
      //cout << "ERROR evaluating range..." << endl;
    return -99.;
@@ -101,27 +102,27 @@ using namespace RooFit;
      central = rootPiBy2*width*(TMath::Erf((central_high-mean)/xscale)-TMath::Erf((central_low-mean)/xscale));
  
    //compute left tail;
-   double A1 = pow(n1invalpha1,n1)*vdt::fast_exp(-alpha1*alpha1/2);
+   double A1 = gbrmath::fast_pow(n1invalpha1,n1)*vdt::fast_exp(-0.5*alpha1*alpha1);
    double B1 = n1invalpha1-fabs(alpha1);
  
    double left_low=x.min(rangeName);
    double left_high=std::min(x.max(rangeName),mean - alpha1*width);
    if(left_low < left_high){ //is the left tail in range?
      if(fabs(n1-1.0)>1.e-5)
-       left = A1*vdt::fast_inv(-n1+1.0)*width*(pow(B1-(left_low-mean)*invwidth,-n1+1.)-pow(B1-(left_high-mean)*invwidth,-n1+1.));
+       left = A1*vdt::fast_inv(-n1+1.0)*width*(gbrmath::fast_pow(B1-(left_low-mean)*invwidth,-n1+1.)-gbrmath::fast_pow(B1-(left_high-mean)*invwidth,-n1+1.));
      else
        left = A1*width*(vdt::fast_log(B1-(left_low-mean)*invwidth) - vdt::fast_log(B1-(left_high-mean)*invwidth) );
    }
  
    //compute right tail;
-   double A2 = pow(n2invalpha2,n2)*exp(-alpha2*alpha2/2);
+   double A2 = gbrmath::fast_pow(n2invalpha2,n2)*vdt::fast_exp(-0.5*alpha2*alpha2);
    double B2 = n2invalpha2-fabs(alpha2);
  
    double right_low=std::max(x.min(rangeName),mean + alpha2*width);
    double right_high=x.max(rangeName);
    if(right_low < right_high){ //is the right tail in range?
      if(fabs(n2-1.0)>1.e-5)
-       right = A2*vdt::fast_inv(-n2+1.0)*width*(pow(B2+(right_high-mean)*invwidth,-n2+1.)-pow(B2+(right_low-mean)*invwidth,-n2+1.));
+       right = A2*vdt::fast_inv(-n2+1.0)*width*(gbrmath::fast_pow(B2+(right_high-mean)*invwidth,-n2+1.)-gbrmath::fast_pow(B2+(right_low-mean)*invwidth,-n2+1.));
      else
        right = A2*width*(vdt::fast_log(B2+(right_high-mean)*invwidth) - vdt::fast_log(B2+(right_low-mean)*invwidth) );
    }
@@ -176,13 +177,13 @@ using namespace RooFit;
    if(t>-alpha1 && t<alpha2){
      return exp(-0.5*t*t);
    }else if(t<=-alpha1){
-     double A1 = pow(n1/fabs(alpha1),n1)*exp(-alpha1*alpha1/2);
+     double A1 = gbrmath::fast_pow(n1/fabs(alpha1),n1)*exp(-alpha1*alpha1/2);
      double B1 = n1/fabs(alpha1)-fabs(alpha1);
-     return A1*pow(B1-t,-n1);
+     return A1*gbrmath::fast_pow(B1-t,-n1);
    }else if(t>=alpha2){
-     double A2 = pow(n2/fabs(alpha2),n2)*exp(-alpha2*alpha2/2);
+     double A2 = gbrmath::fast_pow(n2/fabs(alpha2),n2)*exp(-alpha2*alpha2/2);
      double B2 = n2/fabs(alpha2)-fabs(alpha2);
-     return A2*pow(B2+t,-n2);
+     return A2*gbrmath::fast_pow(B2+t,-n2);
    }else{
      //cout << "ERROR evaluating range..." << endl;
      return -99.;
@@ -215,27 +216,27 @@ using namespace RooFit;
      central = rootPiBy2*width*(TMath::Erf((central_high-mean)/xscale)-TMath::Erf((central_low-mean)/xscale));
  
    //compute left tail;
-   double A1 = pow(n1/fabs(alpha1),n1)*exp(-alpha1*alpha1/2);
+   double A1 = gbrmath::fast_pow(n1/fabs(alpha1),n1)*exp(-alpha1*alpha1/2);
    double B1 = n1/fabs(alpha1)-fabs(alpha1);
  
    double left_low=x.min(rangeName);
    double left_high=std::min(x.max(rangeName),mean - alpha1*width);
    if(left_low < left_high){ //is the left tail in range?
      if(fabs(n1-1.0)>1.e-5)
-       left = A1/(-n1+1.0)*width*(pow(B1-(left_low-mean)/width,-n1+1.)-pow(B1-(left_high-mean)/width,-n1+1.));
+       left = A1/(-n1+1.0)*width*(gbrmath::fast_pow(B1-(left_low-mean)/width,-n1+1.)-gbrmath::fast_pow(B1-(left_high-mean)/width,-n1+1.));
      else
        left = A1*width*(log(B1-(left_low-mean)/width) - log(B1-(left_high-mean)/width) );
    }
  
    //compute right tail;
-   double A2 = pow(n2/fabs(alpha2),n2)*exp(-alpha2*alpha2/2);
+   double A2 = gbrmath::fast_pow(n2/fabs(alpha2),n2)*exp(-alpha2*alpha2/2);
    double B2 = n2/fabs(alpha2)-fabs(alpha2);
  
    double right_low=std::max(x.min(rangeName),mean + alpha2*width);
    double right_high=x.max(rangeName);
    if(right_low < right_high){ //is the right tail in range?
      if(fabs(n2-1.0)>1.e-5)
-       right = A2/(-n2+1.0)*width*(pow(B2+(right_high-mean)/width,-n2+1.)-pow(B2+(right_low-mean)/width,-n2+1.));
+       right = A2/(-n2+1.0)*width*(gbrmath::fast_pow(B2+(right_high-mean)/width,-n2+1.)-gbrmath::fast_pow(B2+(right_low-mean)/width,-n2+1.));
      else
        right = A2*width*(log(B2+(right_high-mean)/width) - log(B2+(right_low-mean)/width) );
    }
