@@ -67,7 +67,7 @@
 #include "vdt/vdtMath.h"
 #include <stdlib.h>
 #include <malloc.h>
-//#include "../interface/GBRArrayUtils.h"
+#include "../interface/GBRArrayUtils.h"
 
 ClassImp(RooTreeConvert)
 
@@ -1837,16 +1837,16 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
     int ncls = fStaticPdfs.getSize();
     
     //zero arrays where necessary and 
-    This loop should auto-vectorize in appropriate compiler/settings
-    for (unsigned int ibin=0; ibin<nbins; ++ibin) {
-      _ns[ivar][ibin] = 0;
-      _tgts[ivar][ibin] = 0.;
-      _tgt2s[ivar][ibin] = 0.;     
-      
-     _bsepgains[ivar][ibin] = -std::numeric_limits<float>::max();
-    }
+    //This loop should auto-vectorize in appropriate compiler/settings
+//     for (unsigned int ibin=0; ibin<nbins; ++ibin) {
+//       _ns[ivar][ibin] = 0;
+//       _tgts[ivar][ibin] = 0.;
+//       _tgt2s[ivar][ibin] = 0.;     
+//       
+//      _bsepgains[ivar][ibin] = -std::numeric_limits<float>::max();
+//     }
     
-   // GBRArrayUtils::InitArrays(_ns[ivar],_tgts[ivar],_tgt2s[ivar],_bsepgains[ivar],nbins);
+    GBRArrayUtils::InitArrays(_ns[ivar],_tgts[ivar],_tgt2s[ivar],_bsepgains[ivar],nbins);
     
     //printf("touch wscls\n");
     //the inner loop here should also vectorize
