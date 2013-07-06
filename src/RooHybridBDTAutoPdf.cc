@@ -1807,16 +1807,12 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
   for (int ivar=0; ivar<nvars; ++ivar) {
              
     
-    int minquant = std::numeric_limits<int>::max();
-    int maxquant = 0;
+    int minquant;
+    int maxquant;
     
     //find max and min quantiles in the input events
     //(this loop should be vectorized by gcc with reasonable optimization options)
-    for (int iev = 0; iev<nev; ++iev) {
-      if (_quants[ivar][iev]<minquant) minquant = _quants[ivar][iev];
-      if (_quants[ivar][iev]>maxquant) maxquant = _quants[ivar][iev];
-
-    }    
+    GBRArrayUtils::MinMaxQuants(minquant, maxquant, _quants[ivar], nev);
 
     //calculate offset and scaling (powers of 2) to reduce the total number of quantiles
     //to the fNBinsMax for the search for the best split value
@@ -1837,23 +1833,12 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
     int ncls = fStaticPdfs.getSize();
     
     //zero arrays where necessary and 
-    //This loop should auto-vectorize in appropriate compiler/settings
-//     for (unsigned int ibin=0; ibin<nbins; ++ibin) {
-//       _ns[ivar][ibin] = 0;
-//       _tgts[ivar][ibin] = 0.;
-//       _tgt2s[ivar][ibin] = 0.;     
-//       
-//      _bsepgains[ivar][ibin] = -std::numeric_limits<float>::max();
-//     }
-    
     GBRArrayUtils::InitArrays(_ns[ivar],_tgts[ivar],_tgt2s[ivar],_bsepgains[ivar],nbins);
     
     //printf("touch wscls\n");
     //the inner loop here should also vectorize
     for (int icls=0; icls<ncls; ++icls) {
-      for (unsigned int ibin=0; ibin<nbins; ++ibin) {
-	  _wscls[ivar][icls][ibin] = 0.;
-      }
+      GBRArrayUtils::ZeroArray(_wscls[ivar][icls],nbins);
     }    
     //printf("done wscls\n");
     
@@ -1863,10 +1848,7 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
     
     //printf("quant manipulation\n");
     //this loop should auto-vectorize
-    for (unsigned int ibin=0; ibin<nbins; ++ibin) { 
-      int quant = ((1+ibin)<<pscale) + offset - 1;
-      _binquants[ivar][ibin] = std::min(quant, fNQuantiles-1);
-    }
+    GBRArrayUtils::FillBinQuants(_binquants[ivar], offset, pscale,fNQuantiles, nbins);
     
     //this loop won't auto-vectorize because it's another gather operation (maybe in avx2 and gcc>4.7)
     for (unsigned int ibin=0; ibin<nbins; ++ibin) { 
@@ -1983,36 +1965,14 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
   //  float sumwright=0.;
     int bestbin=0;
     
-    const double fulldiff = std::min(0.,-0.5*sumtgt*sumtgt*vdt::fast_inv(sumtgt2));
+    //const double fulldiff = std::min(0.,-0.5*sumtgt*sumtgt*vdt::fast_inv(sumtgt2));
+    const double fulldiff = std::min(0.,-0.5*sumtgt*sumtgt/sumtgt2);
     //const double fulldiff = -0.5*sumtgt*sumtgt/sumtgt2;
     
     //printf("start heavy loop\n");
     //loop over all bins and compute improvement in weighted variance of target for each split
     //This loop is relatively expensive and should auto-vectorize in the appropriate compiler/settings
-    for (unsigned int ibin=0; ibin<nbins; ++ibin) {     
-      
-      //if (sumtgt2==0.) continue;
-      
-      double leftdiff = std::min(0.,-0.5*_sumtgts[ivar][ibin]*_sumtgts[ivar][ibin]*vdt::fast_inv(_sumtgt2s[ivar][ibin]));
-      //double leftdiff = -0.5*_sumtgts[ivar][ibin]*_sumtgts[ivar][ibin]/_sumtgt2s[ivar][ibin];
-      
-      //if (_sumtgt2s[ivar][ibin]==0.) continue;
-      
-      double righttgtsum = sumtgt - _sumtgts[ivar][ibin];
-      double righttgt2sum = sumtgt2 - _sumtgt2s[ivar][ibin];
-      
-      double rightdiff = std::min(0.,-0.5*righttgtsum*righttgtsum*vdt::fast_inv(righttgt2sum));
-      //double rightdiff = -0.5*righttgtsum*righttgtsum/righttgt2sum;
-      
-      //if (righttgt2sum==0.) continue;
-            
-      //weighted improvement in variance from this split     
-     _bsepgains[ivar][ibin] = fulldiff - leftdiff - rightdiff;
-     
-    // printf("fulldiff = %5f, leftdiff = %5f, rightdiff = %5f, sepgain = %5f\n",fulldiff,leftdiff,rightdiff,_bsepgains[ivar][ibin]);
-
-      
-    }
+    GBRArrayUtils::FillSepGains(_sumtgts[ivar], _sumtgt2s[ivar], _bsepgains[ivar], fulldiff, sumtgt, sumtgt2, nbins);
      
     //printf("start final loop\n");
     //loop over computed variance improvements and select best split, respecting also minimum number of events per node

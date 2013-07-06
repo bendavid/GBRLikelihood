@@ -1,5 +1,7 @@
 #include "../interface/GBRArrayUtils.h" 
+#include "vdt/vdtMath.h"
 #include <limits>
+#include <algorithm>    
     
 void GBRArrayUtils::InitArrays(int *__restrict__ ns, double *__restrict__ tgts, double *__restrict__ tgt2s, float *__restrict__ bsepgains, const int nbins) {
  
@@ -17,4 +19,62 @@ void GBRArrayUtils::InitArrays(int *__restrict__ ns, double *__restrict__ tgts, 
   }
    
 }
+    
+void GBRArrayUtils::ZeroArray(double *__restrict__ wscls, const int nbins) {
+  wscls = (double*)__builtin_assume_aligned(wscls,32);
+  for (int ibin=0; ibin<nbins; ++ibin) {
+    wscls[ibin] = 0.;
+  }
+}
+ 
+void GBRArrayUtils::MinMaxQuants(int &minquant, int &maxquant, const int *__restrict__ quants, const int nev) {
   
+  quants = (const int*)__builtin_assume_aligned(quants,32);
+  
+  minquant = std::numeric_limits<int>::max();
+  maxquant = 0;
+   
+  for (int iev = 0; iev<nev; ++iev) {
+    if (quants[iev]<minquant) minquant = quants[iev];
+    if (quants[iev]>maxquant) maxquant = quants[iev];
+  }      
+  
+}
+
+void GBRArrayUtils::FillBinQuants(int *__restrict__ binquants, const int offset, const int pscale, const int nquantiles, const int nbins) {
+  binquants = (int*)__builtin_assume_aligned(binquants,32);
+  
+  for (int ibin=0; ibin<nbins; ++ibin) { 
+    int quant = ((1+ibin)<<pscale) + offset - 1;
+    binquants[ibin] = std::min(quant, nquantiles-1);
+  }  
+  
+}
+
+void GBRArrayUtils::FillSepGains(const double *__restrict__ sumtgts, const double *__restrict__ sumtgt2s, float *__restrict__ bsepgains, const double fulldiff, const double sumtgt, const double sumtgt2, const int nbins) {
+  
+  sumtgts = (const double*)__builtin_assume_aligned(sumtgts,32);
+  sumtgt2s = (const double*)__builtin_assume_aligned(sumtgt2s,32);
+  bsepgains = (float*)__builtin_assume_aligned(bsepgains,32);
+  
+  for (int ibin=0; ibin<nbins; ++ibin) {     
+        
+    //double leftdiff = std::min(0.,-0.5*sumtgts[ibin]*sumtgts[ibin]*vdt::fast_inv(sumtgt2s[ibin]));
+    double leftdiff = std::min(0.,-0.5*sumtgts[ibin]*sumtgts[ibin]/sumtgt2s[ibin]);
+
+    double righttgtsum = sumtgt - sumtgts[ibin];
+    double righttgt2sum = sumtgt2 - sumtgt2s[ibin];
+    
+    //double rightdiff = std::min(0.,-0.5*righttgtsum*righttgtsum*vdt::fast_inv(righttgt2sum));
+    double rightdiff = std::min(0.,-0.5*righttgtsum*righttgtsum/righttgt2sum);
+
+	  
+    //weighted improvement in variance from this split     
+    bsepgains[ibin] = fulldiff - leftdiff - rightdiff;
+    
+
+    
+  }  
+  
+  
+}
