@@ -26,8 +26,8 @@ void GBRArrayUtils::ZeroArray(double *__restrict__ wscls, const int nbins) {
     wscls[ibin] = 0.;
   }
 }
- 
-void GBRArrayUtils::MinMaxQuants(int &minquant, int &maxquant, const int *__restrict__ quants, const int nev) {
+  
+void GBRArrayUtils::MinMaxQuants(int &__restrict__ minquant, int &__restrict__ maxquant, const int *__restrict__ quants, const int nev) {
   
   quants = (const int*)__builtin_assume_aligned(quants,32);
   
@@ -39,14 +39,19 @@ void GBRArrayUtils::MinMaxQuants(int &minquant, int &maxquant, const int *__rest
     if (quants[iev]>maxquant) maxquant = quants[iev];
   }      
   
-}
-
-void GBRArrayUtils::FillBinQuants(int *__restrict__ binquants, const int offset, const int pscale, const int nquantiles, const int nbins) {
+} 
+ 
+void GBRArrayUtils::FillBinQuants(int *__restrict__ binquants, const unsigned int offset, const unsigned int pscale, const unsigned int nquantiles, const unsigned int nbins) {
   binquants = (int*)__builtin_assume_aligned(binquants,32);
-  
-  for (int ibin=0; ibin<nbins; ++ibin) { 
-    int quant = ((1+ibin)<<pscale) + offset - 1;
+    
+  for (unsigned int ibin=0; ibin<nbins; ++ibin) { 
+    //int scaledbin
+    //int quant = ((ibin+1)<<pscale) + offset - 1;
+    unsigned int quant = ((ibin+1)<<pscale) + offset - 1;
+    //unsigned short quant = (ibin<<pscale) + offset - 1;
+    //int quant = ((ibin+1)<<pscale) + offset - 1;
     binquants[ibin] = std::min(quant, nquantiles-1);
+    //binquants[ibin] = quant < nquantiles ? quant : nquantiles-1;
   }  
   
 }
@@ -70,7 +75,7 @@ void GBRArrayUtils::FillSepGains(const double *__restrict__ sumtgts, const doubl
 
 	  
     //weighted improvement in variance from this split     
-    bsepgains[ibin] = fulldiff - leftdiff - rightdiff;
+    bsepgains[ibin] = std::max(0.,fulldiff - leftdiff - rightdiff);
     
 
     

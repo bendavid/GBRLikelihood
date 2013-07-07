@@ -617,6 +617,7 @@ RooHybridBDTAutoPdf::RooHybridBDTAutoPdf(const char *name, const char *title, Ro
   fNQuantiles(std::numeric_limits<unsigned short>::max()+1),
   //fNQuantiles(128),
   fNBinsMax(128),
+  //fNBinsMax(fNQuantiles),
   fTransitionQuantile(0.7),
   fMinCutSignificance(-99.),
   fMinCutSignificanceMulti(-99.),
@@ -1398,68 +1399,6 @@ void RooHybridBDTAutoPdf::BuildQuantiles(int nvars, double sumw) {
  
   //parallelize building of quantiles for each input variable
   //(sorting of event pointer vector is cpu-intensive)
-//#pragma omp parallel for
-
-  fSigmaConsts.resize(nvars);
-
-//   double sumx = 0.;
-//   double sumxsq = 0.;
-//   std::vector<double> sumxsq;
-  
-  std::vector<double> sumx;
-  std::vector<double> sumxsq;
-  std::vector<double> sumwd;
-  std::vector<double> fullsigmas;
-  
-  sumx.resize(nvars);
-  sumxsq.resize(nvars);
-  sumwd.resize(nvars);
-  fullsigmas.resize(nvars);
-  
-  for (int ivar=0; ivar<nvars; ++ivar) {
-    sumx[ivar] = 0.;
-    sumxsq[ivar] = 0.;
-    sumwd[ivar] = 0.;
-  }
-  
-  
-  for (unsigned int iev=0; iev<fEvts.size(); ++iev) {
-    if (fEvts.at(iev)->Class()==0) {
-      for (int ivar=0; ivar<nvars; ++ivar) {
-        sumwd[ivar] += fEvts.at(iev)->Weight();
-        sumx[ivar] += fEvts.at(iev)->Weight()*fEvts.at(iev)->VarAlt(ivar);
-        sumxsq[ivar] += fEvts.at(iev)->Weight()*fEvts.at(iev)->VarAlt(ivar)*fEvts.at(iev)->VarAlt(ivar);
-      }
-    }
-  }
-//  int dims = fCondVars.getSize();
-//  int dimsprime = 1;
-  double fullsigmasum = 0.;
-  for (int ivar=0; ivar<nvars; ++ivar) {
-    double fullsigma = sqrt(sumxsq[ivar]/sumwd[ivar] - sumx[ivar]*sumx[ivar]/sumwd[ivar]/sumwd[ivar]);
-    fullsigmas[ivar] = fullsigma;
-    fullsigmasum += fullsigma;
-    double sigmacoeff = pow(4.0/3.0,1.0/5.0)*sqrt(fullsigma)*pow(sumwd[ivar],-1.0/5.0);
-    fSigmaConsts[ivar] = sigmacoeff;
-    //printf("sigmacoeff = %5f\n",sigmacoeff);
-  }
-//  double meansigma = fullsigmasum/(double)dims;
-//   for (int ivar=0; ivar<nvars; ++ivar) {
-//     double sigmacoeff = pow(4.0/dims+2.0,1.0/((double)dims+4.0))*sqrt(fullsigmas[ivar]/meansigma)*pow(meansigma,1.0-(double)dims/(double)dimsprime)*pow(sumwd[ivar],-1.0/((double)dims+4.0));
-//     fSigmaConsts[ivar] = sigmacoeff;
-//     printf("sigmacoeff = %5f\n",sigmacoeff);
-//   }
-  
-//   fNorm = 0;  
-//   for (unsigned int iev=0; iev<fEvts.size(); ++iev) {
-//       double target = fEvts.at(iev)->Target();    
-//       if ( fEvts.at(iev)->Class()==1 ) fNorm += fEvts.at(iev)->Weight()*fIntegralNorm*fEvts.at(iev)->InverseGenPdf()*exp(-target);
-//   }
-  
-
-  
-
-
   #pragma omp parallel for
   for (int ivar=0; ivar<nvars; ++ivar) {
     printf("sorting var %i\n",ivar);
@@ -1518,7 +1457,6 @@ const HybridGBRForest *RooHybridBDTAutoPdf::TrainForest(int ntrees, bool reusefo
   fFunc->setOperMode(RooAbsArg::AClean);
   
   for (unsigned int iev=0; iev<fEvts.size(); ++iev) {
-    fEvts.at(iev)->SetCurrentNode(0);
     for (int itgt=0; itgt<fNTargets; ++itgt) {
       fEvts.at(iev)->SetCurrentNode(itgt,0);
     }
@@ -1728,7 +1666,7 @@ const HybridGBRForest *RooHybridBDTAutoPdf::TrainForest(int ntrees, bool reusefo
     
   
 //_______________________________________________________________________
-void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, double sumwtotal, HybridGBRTree &tree, int nvars, double transition, int depth, const std::vector<std::pair<float,float> > limits, int tgtidx) {
+void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, double sumwtotal, HybridGBRTree &tree, const int nvars, double transition, int depth, const std::vector<std::pair<float,float> > limits, int tgtidx) {
   
   
   //alignas(32) float floats[128];
@@ -1740,6 +1678,7 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
   
   //number of events input to node
   const int nev = evts.size();
+  const int ncls = fStaticPdfs.getSize();
   
   //index of best cut variable
   int bestvar = 0;
@@ -1830,7 +1769,6 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
     
 
 
-    int ncls = fStaticPdfs.getSize();
     
     //zero arrays where necessary and 
     GBRArrayUtils::InitArrays(_ns[ivar],_tgts[ivar],_tgt2s[ivar],_bsepgains[ivar],nbins);
@@ -1957,7 +1895,7 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
    // printf("fullrms = %5f, sumtgt2 = %5f, sumtgt = %5f, sumw = %5f\n",fullrms,sumtgt2,sumtgt,sumw);
     
     //printf("short loop\n");
-    float maxsepgain = -std::numeric_limits<float>::max();
+    float maxsepgain = 0.;
     float cutval = 0.;
     int nleft= 0;
     int nright = 0;
@@ -2018,7 +1956,7 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
       
 
 
-      if (_bsepgains[ivar][ibin]>maxsepgain && !std::isinf(_bsepgains[ivar][ibin]) ) {
+      if (_bsepgains[ivar][ibin]>maxsepgain) {
 	
 	bool passminweights = true;
 	for (int icls=0; icls<ncls; ++icls) {
@@ -2308,115 +2246,7 @@ void RooHybridBDTAutoPdf::BuildLeaf(const std::vector<HybridGBREvent*> &evts, Hy
 }
 
 
-const std::vector<HybridGBREvent*> *gAHEvts;
-RooArgList *gAHCondVars;
-RooArgList *gAHParmVars;
-RooArgList *gAHExtVars;
-RooArgList *gAHStaticTgts;
-RooArgList *gAHStaticPdfs;
-RooArgList *gAHFullFuncs;
-double gAHN0Obs;
-int gAHNTargets;
-void gAHEvalLoss(int& nDim, double* gout, double& result, double par[], int flg) {
- 
-//   int nterm = tree.Responses()[0].size();
-// 
-   int nextvars = gAHExtVars->getSize();
-//   
-//   int nparms = gAHExtVars->getSize() + gAHNTargets*nterm; 
-  
-  //printf("nextvars = %i, nparms = %i\n",nextvars,nparms);
-  
- // double dr = 0.;
-  
-  int idxglobal = 0;
-  //int idxn0 = idxglobal + gAHExtVars.index(fN0);
-  
-  //printf("idxn0 = %i, fN0 = %5f\n", idxn0,fN0->getVal());
 
-  //double result = 0.;
-  
-  result = 0;
-  
-
-  RooArgSet parmset(*gAHParmVars);
-        
-  //printf("initval = %5f\n",static_cast<RooRealVar*>(gAHExtVars->at(1))->getVal());
-  
-  //global variables
-//   RooArgList extbak = gAHExtVars;
-//   
-  std::vector<double> extvals(gAHExtVars->getSize());
-  
-  for (int ivar=0; ivar<gAHExtVars->getSize(); ++ivar) {
-    int iel = idxglobal + ivar;
-    extvals[ivar] = static_cast<RooRealVar*>(gAHExtVars->at(ivar))->getVal();
-    static_cast<RooRealVar*>(gAHExtVars->at(ivar))->setVal(static_cast<RooRealVar*>(gAHExtVars->at(ivar))->getVal() + par[iel]);   
-  }
-  
-//   printf("intermediateval = %5f\n",static_cast<RooRealVar*>(gAHExtVars->at(1))->getVal());
-//   
-//   printf("begin loop\n");
-    
-  for (std::vector<HybridGBREvent*>::const_iterator it = gAHEvts->begin(); it!=gAHEvts->end(); ++it) {
-
-    int termidx = (*it)->CurrentNode();
-    int idxlocal = nextvars + gAHNTargets*termidx;
-    
-    for (int ivar=0; ivar<gAHCondVars->getSize(); ++ivar) {
-      static_cast<RooRealVar*>(gAHCondVars->find(*gAHCondVars->at(ivar)))->setVal((*it)->Var(ivar));
-    }
-    for (int ivar=0; ivar<gAHParmVars->getSize(); ++ivar) {
-      static_cast<RooRealVar*>(gAHParmVars->find(*gAHParmVars->at(ivar)))->setVal((*it)->Var(gAHCondVars->getSize() + ivar));
-    }    
-
-    for (int itgt=0; itgt<gAHNTargets; ++itgt) {
-      int iel = idxlocal + itgt;
-      static_cast<RooRealVar*>(gAHStaticTgts->at(itgt))->setVal((*it)->Target(itgt) + par[iel]);
-    }
-    
-    int evcls = (*it)->Class(); 
-
-    //nll value for minos constraint
-    //if (evcls==0) fNLLVal += -log(static_cast<RooAbsReal*>(gAHStaticPdfs->at(evcls))->getValV(&parmset));
-    
-    result += -log(static_cast<RooAbsReal*>(gAHStaticPdfs->at(evcls))->getValV(&parmset)); 
-    
-    
-    //normalization terms
-    if (evcls==0) {
-      for (int ipdf=1; ipdf<gAHStaticPdfs->getSize(); ++ipdf) {
-        int itgt = ipdf - 1;
-        int iel = idxlocal + itgt;
-        double nexpF = exp(-(*it)->Target(itgt) - par[iel]);
-        result += nexpF/gAHN0Obs;
-      }
-    }
-    else {
-      int itgt = evcls - 1;
-      int iel = idxlocal + itgt;
-      result += (*it)->Target(itgt) + par[iel];      
-    }    
-    
-  }
-  
-  //global terms
-  int infunc = gAHFullFuncs->getSize()-1;
-  result += static_cast<RooAbsReal*>(gAHFullFuncs->at(infunc))->getVal() - gAHN0Obs*log(static_cast<RooAbsReal*>(gAHFullFuncs->at(infunc))->getVal());  
-  
-  //gAHExtVars = extbak;
-  
-  for (int ivar=0; ivar<gAHExtVars->getSize(); ++ivar) {
-    static_cast<RooRealVar*>(gAHExtVars->at(ivar))->setVal(extvals[ivar]);   
-  }  
-  
-  //printf("finalval = %5f\n",static_cast<RooRealVar*>(gAHExtVars->at(1))->getVal());
-
-  
-  //return result;
-      
-      
-}
 
 
 double RooHybridBDTAutoPdf::EvalLossNull(double dummy) {
@@ -2446,7 +2276,7 @@ double RooHybridBDTAutoPdf::EvalLossRooFit() {
   #pragma omp parallel for
   for (unsigned int ievt=0; ievt<fEvts.size(); ++ievt) {
 
-    if (ievt%100!=0) continue;
+    //if (ievt%100!=0) continue;
     
     int ithread =  omp_get_thread_num();
     //int ithread =  0;
@@ -2843,144 +2673,7 @@ double RooHybridBDTAutoPdf::EvalLossAvg() {
 }
 
 
-double RooHybridBDTAutoPdf::EvalLoss(double lambda, const TVectorD &dpar, TVectorD &dL) {
- 
-//   int nterm = tree.Responses()[0].size();
-// 
-   int nextvars = fExtVars.getSize();
-//   
-   int nparms = dpar.GetNrows();
-   dL = TVectorD(nparms);
-  
-  //printf("nextvars = %i, nparms = %i\n",nextvars,nparms);
-  
- // double dr = 0.;
-  
-  int idxglobal = 0;
-  //int idxn0 = idxglobal + fExtVars.index(fN0);
-  
-  //printf("idxn0 = %i, fN0 = %5f\n", idxn0,fN0->getVal());
 
-  double nllval = 0.;
-  
-  
-
-  RooArgSet parmset(fParmVars);
-	
-  //printf("initval = %5f\n",static_cast<RooRealVar*>(fExtVars.at(1))->getVal());
-  
-  //global variables
-//   RooArgList extbak = fExtVars;
-//   
-  std::vector<double> extvals(fExtVars.getSize());
-  
-  for (int ivar=0; ivar<fExtVars.getSize(); ++ivar) {
-    int iel = idxglobal + ivar;
-    extvals[ivar] = static_cast<RooRealVar*>(fExtVars.at(ivar))->getVal();
-    static_cast<RooRealVar*>(fExtVars.at(ivar))->setVal(static_cast<RooRealVar*>(fExtVars.at(ivar))->getVal() + lambda*dpar(iel));   
-  }
-  
-//   printf("intermediateval = %5f\n",static_cast<RooRealVar*>(fExtVars.at(1))->getVal());
-//   
-//   printf("begin loop\n");
-    
-  for (std::vector<HybridGBREvent*>::const_iterator it = fEvts.begin(); it!=fEvts.end(); ++it) {
-
-    int termidx = (*it)->CurrentNode();
-    
-    int idxlocal = nextvars + fNTargets*termidx;
-    
-    for (int ivar=0; ivar<fCondVars.getSize(); ++ivar) {
-      static_cast<RooRealVar*>(fCondVars.at(ivar))->setVal((*it)->Var(ivar));
-    }
-    for (int ivar=0; ivar<fParmVars.getSize(); ++ivar) {
-      static_cast<RooRealVar*>(fParmVars.at(ivar))->setVal((*it)->Var(fCondVars.getSize() + ivar));
-    }    
-
-    for (int itgt=0; itgt<fNTargets; ++itgt) {
-      int iel = idxlocal + itgt;
-      static_cast<RooRealVar*>(fStaticTgts.at(itgt))->setVal((*it)->Target(itgt) + lambda*dpar[iel]);
-    }
-    
-    int evcls = (*it)->Class(); 
-
-    //nll value for minos constraint
-    //if (evcls==0) fNLLVal += -log(static_cast<RooAbsReal*>(fStaticPdfs.at(evcls))->getValV(&parmset));
-    
-    nllval += -log(static_cast<RooAbsReal*>(fStaticPdfs.at(evcls))->getValV(&parmset)); 
-    
-    //if (std::isnan(nllval)) return std::numeric_limits<double>::max();
-    
-    for (unsigned int iidx=0; iidx<fOuterIndices[evcls].size(); ++iidx) {
-      
-      int ivar = fOuterIndices[evcls][iidx];
-      int idrv = ivar;
-      int itgt = ivar - fExtVars.getSize();
-      int iel;
-      if (itgt>=0) iel = idxlocal + itgt;
-      else iel = idxglobal + ivar;
-      
-      double drvi = Derivative1(static_cast<RooAbsReal*>(fStaticPdfs.at(evcls)),static_cast<RooRealVar*>(fFullParms.at(idrv)),&parmset,1e-3*static_cast<RooRealVar*>(fFullParms.at(idrv))->getError());
-      //double drvialt = fDerivatives[evcls][idrv]->getVal();
-      
-      //printf("drv%i = %5f, alt = %5f\n",idrv,drvi,drvialt);
-      
-      
-      //dL[iel] += -fDerivatives[evcls][idrv]->getVal()/static_cast<RooAbsReal*>(fStaticPdfs.at(evcls))->getValV(&parmset);
-      dL[iel] += -drvi/static_cast<RooAbsReal*>(fStaticPdfs.at(evcls))->getValV(&parmset);
-      
-    }
-    
-    
-    //normalization terms
-    if (evcls==0) {
-      for (int ipdf=1; ipdf<fStaticPdfs.getSize(); ++ipdf) {
-	int itgt = ipdf - 1;
-	int iel = idxlocal + itgt;
-	double nexpF = exp(-(*it)->Target(itgt) - lambda*dpar[iel]);
-	nllval += nexpF/fN0Obs;
-	dL[iel] += -nexpF/fN0Obs;
-	//d2L[iel][iel] += nexpF/fN0Obs;	
-      }
-    }
-    else {
-      int itgt = evcls - 1;
-      int iel = idxlocal + itgt;
-      nllval += (*it)->Target(itgt) + lambda*dpar[iel];
-      dL[iel] += 1.0;
-    }    
-    
-  }
-  
-  //global terms
-  int infunc = fFullFuncs.getSize()-1;
-  nllval += static_cast<RooAbsReal*>(fFullFuncs.at(infunc))->getVal() - fN0Obs*log(static_cast<RooAbsReal*>(fFullFuncs.at(infunc))->getVal());  
-  
-  
-  for (unsigned int iidx=0; iidx<fOuterIndices[infunc].size(); ++iidx) {
-	int ivar = fOuterIndices[infunc][iidx];
-	int idrv = ivar;      
-	int iel = idxglobal + ivar;
-	
-	double drvi = Derivative1(static_cast<RooAbsReal*>(fFullFuncs.at(infunc)),static_cast<RooRealVar*>(fFullParms.at(idrv)),&parmset,1e-3*static_cast<RooRealVar*>(fFullParms.at(idrv))->getError());
-
-	
-	dL[iel] += drvi - fN0Obs*drvi/fN0->getVal();
-  }  
-  
-  //fExtVars = extbak;
-  
-  for (int ivar=0; ivar<fExtVars.getSize(); ++ivar) {
-    static_cast<RooRealVar*>(fExtVars.at(ivar))->setVal(extvals[ivar]);   
-  }  
-  
-  //printf("finalval = %5f\n",static_cast<RooRealVar*>(fExtVars.at(1))->getVal());
-
-  
-  return nllval;
-      
-      
-}
 
 
 

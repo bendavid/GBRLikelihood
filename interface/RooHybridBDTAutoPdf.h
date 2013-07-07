@@ -292,7 +292,7 @@ protected:
   void UpdateTargets(int nvars, double sumw, int itree);
   void FillDerivatives();
   
-  void TrainTree(const std::vector<HybridGBREvent*> &evts, double sumwtotal, HybridGBRTree &tree, int nvars, double transition, int depth, std::vector<std::pair<float,float> > limits, int tgtidx=-1);      
+  void TrainTree(const std::vector<HybridGBREvent*> &evts, double sumwtotal, HybridGBRTree &tree, const int nvars, double transition, int depth, std::vector<std::pair<float,float> > limits, int tgtidx=-1);      
   void BuildLeaf(const std::vector<HybridGBREvent*> &evts, HybridGBRTree &tree, int tgtidx);
 
   //void FitResponses(const std::vector<HybridGBREvent*> &evts, double sumwtotal, HybridGBRTree &tree);
@@ -306,7 +306,6 @@ protected:
   void RecomputeTargets();
   void GradientMinos();
   
-  double EvalLoss(double lambda, const TVectorD &dpar, TVectorD &dL);
   double EvalLossAvg();
   
   static double EvalLossNull(double dummy);
