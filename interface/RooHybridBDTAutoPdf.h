@@ -463,6 +463,10 @@ protected:
   
   float **fQuantileMaps;     
   
+  std::vector<int> sparserows;
+  std::vector<int> sparsecols;
+  std::vector<double> sparsedata;
+  
   
 //   float *a;
 //   float *b;

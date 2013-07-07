@@ -52,6 +52,7 @@
 #include "TDecompChol.h"
 #include "TDecompBK.h"
 #include "TDecompLU.h"
+#include "TDecompSparse.h"
 #include "TTree.h"
 #include "TTreeFormula.h"
 #include "RooCategory.h"
@@ -2276,7 +2277,7 @@ double RooHybridBDTAutoPdf::EvalLossRooFit() {
   #pragma omp parallel for
   for (unsigned int ievt=0; ievt<fEvts.size(); ++ievt) {
 
-    //if (ievt%100!=0) continue;
+    if (ievt%100!=0) continue;
     
     int ithread =  omp_get_thread_num();
     //int ithread =  0;
@@ -2869,6 +2870,7 @@ void RooHybridBDTAutoPdf::FillDerivatives() {
 
 void RooHybridBDTAutoPdf::FitResponses(HybridGBRForest *forest) {
 
+  printf("fit responses\n");
   //int tgtidx = itree%(fNTargets);
 
   
@@ -2904,20 +2906,23 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForest *forest) {
       
   int msize = nparms;
   
+  bool usematrix = msize<8000;
   
   //double lambda = 1.0;
 //    double nll = 0.;
   //fNLLVal = 0.; 
 
   
-  TMatrixDSym d2L(msize);
+  //TMatrixDSym d2L(msize);
+  std::map<std::pair<int,int>,double> d2Lmap;
   TVectorD dL(msize);
 
   RooArgSet parmset(fParmVars);
 	
   //printf("begin loop\n");
   
-  std::vector<TMatrixDSym> d2Ls(fNThreads,TMatrixDSym(msize));
+  //std::vector<TMatrixDSym> d2Ls(fNThreads,TMatrixDSym(msize));
+  std::vector<std::map<std::pair<int,int>,double> > d2Lmaps(fNThreads);
   std::vector<TVectorD> dLs(fNThreads,TVectorD(msize));
   
   
@@ -2972,6 +2977,8 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForest *forest) {
       
       dLs[ithread][iel] += -weight*drvi*invpdf;
       
+      if (!usematrix) continue;
+      
       //double drv2i = fEvts[iev]->Derivative2(idrv);
       //d2Ls[ithread][iel][iel] += -weight*drv2i*invpdf + weight*drvi*drvi*invpdfsq;
       //d2Ls[ithread][iel][iel] += -weight*drv2i*invpdf;
@@ -2993,8 +3000,8 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForest *forest) {
         //double drv2ij = fEvts[iev]->ParmMatrix()(idrv,jdrv);
         
         
-        
-	d2Ls[ithread][iel][jel] += weight*drvi*drvj*invpdfsq;
+        d2Lmaps[ithread][std::pair<int,int>(iel,jel)] += weight*drvi*drvj*invpdfsq;
+	//d2Ls[ithread][iel][jel] += weight*drvi*drvj*invpdfsq;
         //d2Ls[ithread][iel][jel] +=  -weight*drv2ij*invpdf + weight*drvi*drvj*invpdfsq;
 
       
@@ -3006,8 +3013,15 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForest *forest) {
   
   for (int ithread=0; ithread<fNThreads; ++ithread) {
     dL += dLs[ithread];
-    d2L += d2Ls[ithread];
+    //d2L += d2Ls[ithread];
     nmc += nmcs[ithread];
+    
+    if (!usematrix) continue;
+
+    
+    for (std::map<std::pair<int, int>, double>::const_iterator it=d2Lmaps[ithread].begin(); it!=d2Lmaps[ithread].end(); ++it) {
+      d2Lmap[it->first] += it->second;
+    }
   }
 
   
@@ -3022,6 +3036,9 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForest *forest) {
 	
 	dL[iel] += drvi;
       
+        if (!usematrix) continue;
+
+	
     for (unsigned int jidx=iidx; jidx<fOuterIndices[infunc].size(); ++jidx) {
 	
 	int jvar = fOuterIndices[infunc][jidx];
@@ -3039,7 +3056,8 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForest *forest) {
 	  drv2ij = Derivative2(static_cast<RooAbsReal*>(fFullFuncs.at(infunc)),static_cast<RooRealVar*>(fFullParms.at(idrv)),static_cast<RooRealVar*>(fFullParms.at(jdrv)),&parmset,1e-3*static_cast<RooRealVar*>(fFullParms.at(idrv))->getError(),1e-3*static_cast<RooRealVar*>(fFullParms.at(jdrv))->getError());
 	}
 	
-	d2L[iel][jel] += drv2ij;
+	//d2L[iel][jel] += drv2ij;
+	d2Lmap[std::pair<int,int>(iel,jel)] += drv2ij;
 	
     }
 	
@@ -3050,34 +3068,81 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForest *forest) {
 //  double sumweight = 0.;
   
   //symmetrize matrix
-  for (int i=0; i<msize; ++i) {
-    for (int j=0; j<i; ++j) {
-      assert(d2L(i,j)==0.);
-      d2L(i,j) = d2L(j,i);
-    }
-  }
+//   for (int i=0; i<msize; ++i) {
+//     for (int j=0; j<i; ++j) {
+//       assert(d2L(i,j)==0.);
+//       d2L(i,j) = d2L(j,i);
+//     }
+//   }
+
+//solve
+//   TVectorD dLc(dL);
+//   bool solved = false;
+//   TDecompBK dbk(d2L);
+//   solved = dbk.Solve(dLc);
+//   TVectorD dpar = -1.0*dLc;
+
+
   
 
-  TVectorD dLc(dL);
   bool solved = false;
-  TDecompBK dbk(d2L);
-  solved = dbk.Solve(dLc);
-  TVectorD dpar = -1.0*dLc;
+  TVectorD dpar(msize);  
+  
+  
+  if (usematrix) {
+    //symmetrize matrix
+    for (std::map<std::pair<int, int>, double>::const_iterator it=d2Lmap.begin(); it!=d2Lmap.end(); ++it) {
+      d2Lmap[std::pair<int,int>(it->first.second,it->first.first)] = it->second;
+    }
+    
+    printf("create sparse matrix, msize = %i, nnzr = %i\n",msize,int(d2Lmap.size()));;
+    
+    
+    sparserows.resize(d2Lmap.size());
+    sparsecols.resize(d2Lmap.size());
+    sparsedata.resize(d2Lmap.size());
+    
+    {
+      int isparse = 0;
+      for (std::map<std::pair<int, int>, double>::const_iterator it=d2Lmap.begin(); it!=d2Lmap.end(); ++it, ++isparse) {
+	sparserows[isparse] = it->first.first;
+	sparsecols[isparse] = it->first.second;
+	sparsedata[isparse] = it->second;
+      }
+    }
+
+    TMatrixDSparse d2L(msize,msize);
+    d2L.SetMatrixArray(sparsedata.size(), &sparserows[0], &sparsecols[0], &sparsedata[0]);
+  
+    printf("start matrix decomposition\n");
+    TVectorD dLc(dL);
+    TDecompSparse dsp(d2L,0);
+    solved = dsp.Solve(dLc);
+    dpar = -1.0*dLc;
+    printf("done matrix decomposition\n");
+    
+    double drv=0.;
+    for (int ipar=0; ipar<msize; ++ipar) {
+      drv += dpar[ipar]*dL[ipar];
+      if (std::isnan(dL[ipar]) || std::isinf(dL[ipar])) {
+	solved = false;
+      }
+    }
+    
+    if (drv>=0) {
+      solved = false;
+    }
+    
+  }
   
  // printf("FitRespones done invert\n");
 
   
   double step = fShrinkage;
 
-  double drv=0.;
-  for (int ipar=0; ipar<msize; ++ipar) {
-    drv += dpar[ipar]*dL[ipar];
-    if (std::isnan(dL[ipar]) || std::isinf(dL[ipar])) {
-      solved = false;
-    }
-  }
+
   
-  if (drv>=0 || !solved) {
+  if (!solved) {
  // if (1) {  
     printf("fallback to gradient descent\n");
     dpar = -1.0*dL;
