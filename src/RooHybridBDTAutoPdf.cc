@@ -1074,7 +1074,8 @@ RooHybridBDTAutoPdf::RooHybridBDTAutoPdf(const char *name, const char *title, Ro
 //_____________________________________________________________________________
 void RooHybridBDTAutoPdf::SetMinCutSignificance(double x) {
   
-  fMinCutSignificance = TMath::ChisquareQuantile(TMath::Erf(x/sqrt(2)),1)/2.0;
+  //fMinCutSignificance = TMath::ChisquareQuantile(TMath::Erf(x/sqrt(2)),1)/2.0;
+  fMinCutSignificance = x*x/2.0;
   fMinCutSignificanceMulti = TMath::ChisquareQuantile(TMath::Erf(x/sqrt(2)),fNTargets)/2.0;
   
   
@@ -1180,7 +1181,7 @@ void RooHybridBDTAutoPdf::UpdateTargets(int nvars, double sumw, int itree) {
 	
         double drv2val = (upval + downval - 2.0*pdfval)*vdt::fast_inv(step*step);
 
-	//fEvts.at(iev)->SetDerivative2(ivar,drv2val);
+	fEvts.at(iev)->SetDerivative2(ivar,drv2val);
 
 //         for (unsigned int jidx=iidx+1; jidx<fOuterIndices[evcls].size(); ++jidx) {
 //           int jvar = fOuterIndices[evcls][jidx];
@@ -1886,7 +1887,9 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
     //sumtgtmag2 += _sumtgts[ivar][nbins-1]*_sumtgts[ivar][nbins-1];      
     
     const double sumtgt2 = _sumtgt2s[ivar][nbins-1];      
-     
+    if (sumtgt2<=0.) continue;
+    
+    
     //weighted variance of target in full dataset
     //float fullvariance = sumtgt2 - sumtgtmag2/sumw;
     //float fullvariancevar = fullvariance*fullvariance/sumw2/sumw2;
@@ -1905,7 +1908,10 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
     int bestbin=0;
     
     //const double fulldiff = std::min(0.,-0.5*sumtgt*sumtgt*vdt::fast_inv(sumtgt2));
-    const double fulldiff = std::min(0.,-0.5*sumtgt*sumtgt/sumtgt2);
+    const double fulldiff = -0.5*sumtgt*sumtgt/sumtgt2;
+    
+
+    
     //const double fulldiff = -0.5*sumtgt*sumtgt/sumtgt2;
     
     //printf("start heavy loop\n");
@@ -1957,7 +1963,7 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
       
 
 
-      if (_bsepgains[ivar][ibin]>maxsepgain) {
+      if ( _bsepgains[ivar][ibin]>maxsepgain && !std::isinf(_bsepgains[ivar][ibin]) && _sumtgt2s[ivar][ibin]>0. && (sumtgt2-_sumtgt2s[ivar][ibin])>0.) {
 	
 	bool passminweights = true;
 	for (int icls=0; icls<ncls; ++icls) {
@@ -2017,7 +2023,7 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
 //   }
 //   printf("clockloop = %5f\n",clockloop.RealTime());
   
-  float globalsepgain = -std::numeric_limits<float>::max();
+  float globalsepgain = 0.;
   for (int ivar=0; ivar<nvars; ++ivar) {
     if (_sepgains[ivar]>globalsepgain) {
       globalsepgain = _sepgains[ivar];
@@ -2980,6 +2986,8 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForest *forest) {
       if (!usematrix) continue;
       
       //double drv2i = fEvts[iev]->Derivative2(idrv);
+      //d2Lmaps[ithread][std::pair<int,int>(iel,iel)] += -weight*drv2i*invpdf;
+      
       //d2Ls[ithread][iel][iel] += -weight*drv2i*invpdf + weight*drvi*drvi*invpdfsq;
       //d2Ls[ithread][iel][iel] += -weight*drv2i*invpdf;
       
@@ -3158,6 +3166,12 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForest *forest) {
   int stepiter = 0;
   do {
 
+//     if (stepiter==1) {
+//       printf("fallback to gradient descent\n");
+//       dpar = -1.0*dL;
+//       step = 1e-8;      
+//     }
+    
     nllval = EvalLoss(forest,step,dpar);
     printf("step = %5f, nllval = %5f, fNLLVal = %5f\n",step,nllval,fNLLVal);
     if ( (nllval-fNLLVal)<1e-3 ) {
