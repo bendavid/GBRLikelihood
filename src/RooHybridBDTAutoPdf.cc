@@ -1544,6 +1544,13 @@ const HybridGBRForest *RooHybridBDTAutoPdf::TrainForest(int ntrees, bool reusefo
     }
   }
   
+  
+  fStepSizes.resize(fFullParms.getSize());  
+  for (int iparm=0; iparm<fFullParms.getSize(); ++iparm) {
+    fStepSizes[iparm] = 1e-3*static_cast<RooRealVar*>(fFullParms.at(iparm))->getError();
+  }
+  
+  
   printf("nev = %i, sumw = %5f\n",int(nev), sumw);
   
   std::vector<std::pair<float,float> > limits;
@@ -1887,7 +1894,7 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
     //sumtgtmag2 += _sumtgts[ivar][nbins-1]*_sumtgts[ivar][nbins-1];      
     
     const double sumtgt2 = _sumtgt2s[ivar][nbins-1];      
-    if (sumtgt2<=0.) continue;
+    //if (sumtgt2<=0.) continue;
     
     
     //weighted variance of target in full dataset
@@ -1908,7 +1915,7 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
     int bestbin=0;
     
     //const double fulldiff = std::min(0.,-0.5*sumtgt*sumtgt*vdt::fast_inv(sumtgt2));
-    const double fulldiff = -0.5*sumtgt*sumtgt/sumtgt2;
+    const double fulldiff = std::min(0.,-0.5*sumtgt*sumtgt/sumtgt2);
     
 
     
@@ -2913,6 +2920,7 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForest *forest) {
   int msize = nparms;
   
   bool usematrix = msize<8000;
+  //bool usematrix = false;
   
   //double lambda = 1.0;
 //    double nll = 0.;
@@ -3095,6 +3103,41 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForest *forest) {
 
   bool solved = false;
   TVectorD dpar(msize);  
+  
+//   double maxscale = 0.;
+//   for (int iel=0; iel<msize; ++iel) {
+//     int iparm;
+//     if (iel<fExtVars.getSize()) {
+//       iparm = iel;
+//     }
+//     else {
+//       iparm = (iel-fExtVars.getSize())%fNTargets;
+//     }
+//     double scale = dL[iel]/fStepSizes[iparm];
+//     if (scale>maxscale) {
+//       maxscale = scale;
+//     }
+//   }
+//   
+//   double nlldrv=0;
+//   for (int iel=0; iel<msize; ++iel) {
+//     nlldrv += dL[iel];
+//   }
+//   
+//   
+//   double drvstep = 1.0/maxscale;
+//   
+//   double upnllval = EvalLoss(forest,drvstep,dL);
+//   double downnllval = EvalLoss(forest,-drvstep,dL);
+//   
+//   double nlldrv2 = (upnllval + downnllval - 2.0*fNLLVal)/drvstep/drvstep;
+//   
+//   dpar = (-nlldrv*nlldrv/nlldrv2)*dL;
+//   solved = true;
+  
+  
+  
+  
   
   
   if (usematrix) {

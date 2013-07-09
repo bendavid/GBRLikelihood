@@ -467,6 +467,7 @@ protected:
   std::vector<int> sparsecols;
   std::vector<double> sparsedata;
   
+  std::vector<double> fStepSizes;
   
 //   float *a;
 //   float *b;
