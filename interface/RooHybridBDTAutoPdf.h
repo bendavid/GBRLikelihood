@@ -256,6 +256,7 @@ public:
   void SetTransitionQuantile(float x)  { fTransitionQuantile = x;   }
   void SetMinWeights(const std::vector<double> &minweights) { fMinWeights = minweights; }
   void SetMaxDepth(int depth) { fMaxDepth = depth; } 
+  void SetMaxNodes(int max) { fMaxNodes = max; }
  
   const HybridGBRForest *TrainForest(int ntrees, bool reuseforest = false);  
   
@@ -411,6 +412,7 @@ protected:
   
   
   int                       fMaxDepth;
+  int                       fMaxNodes;
 
   std::vector<double>       fSigmaConsts;
   

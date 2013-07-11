@@ -623,6 +623,7 @@ RooHybridBDTAutoPdf::RooHybridBDTAutoPdf(const char *name, const char *title, Ro
   fMinCutSignificance(-99.),
   fMinCutSignificanceMulti(-99.),
   fMaxDepth(-1),
+  fMaxNodes(-1),
   fNTargets(tgtvars.getSize()),  
   _sepgains(0),
   _ws(0)  
@@ -1605,7 +1606,7 @@ const HybridGBRForest *RooHybridBDTAutoPdf::TrainForest(int ntrees, bool reusefo
     double originalshrinkage = fShrinkage;
     if (maxtreesize==1) {
       ++nunittrees;
-      fShrinkage = std::max(originalshrinkage,0.9);
+      //fShrinkage = std::max(originalshrinkage,0.9);
     }
     else {
       nunittrees = 0.;
@@ -2201,7 +2202,7 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
   
   //check if left node is terminal
   //bool termleft = nleft<=(2*fMinEvents) || depth==fMaxDepth;
-  bool termleft = sumwleft<=(2*fMinEvents) || (fMaxDepth>=0 && depth==fMaxDepth);
+  bool termleft = sumwleft<=(2*fMinEvents) || (fMaxDepth>=0 && depth==fMaxDepth) || (fMaxNodes>=0 && int(tree.Responses().size())>=fMaxNodes) ;
   if (termleft) tree.LeftIndices()[thisidx] = -tree.Responses().size();
   else tree.LeftIndices()[thisidx] = tree.CutIndices().size();
   
@@ -2220,7 +2221,7 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
   
   //check if right node is terminal
   //bool termright = nright<=(2*fMinEvents) || depth==fMaxDepth;
-  bool termright = sumwright<=(2*fMinEvents) || (fMaxDepth>=0 && depth==fMaxDepth);
+  bool termright = sumwright<=(2*fMinEvents) || (fMaxDepth>=0 && depth==fMaxDepth) || (fMaxNodes>=0 && int(tree.Responses().size())>=fMaxNodes);
   if (termright) tree.RightIndices()[thisidx] = -tree.Responses().size();
   else tree.RightIndices()[thisidx] = tree.CutIndices().size();
     
@@ -2919,6 +2920,7 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForest *forest) {
       
   int msize = nparms;
   
+  //bool usematrix = true;
   bool usematrix = msize<8000;
   //bool usematrix = false;
   
@@ -2926,9 +2928,13 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForest *forest) {
 //    double nll = 0.;
   //fNLLVal = 0.; 
 
+  printf("allocating Hessian with size %i\n",msize);
   
-  //TMatrixDSym d2L(msize);
-  std::map<std::pair<int,int>,double> d2Lmap;
+  TMatrixDSym d2L;
+  if (usematrix) {
+    d2L.ResizeTo(msize,msize);
+  }
+  //std::map<std::pair<int,int>,double> d2Lmap;
   TVectorD dL(msize);
 
   RooArgSet parmset(fParmVars);
@@ -2936,7 +2942,7 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForest *forest) {
   //printf("begin loop\n");
   
   //std::vector<TMatrixDSym> d2Ls(fNThreads,TMatrixDSym(msize));
-  std::vector<std::map<std::pair<int,int>,double> > d2Lmaps(fNThreads);
+  //std::vector<std::map<std::pair<int,int>,double> > d2Lmaps(fNThreads);
   std::vector<TVectorD> dLs(fNThreads,TVectorD(msize));
   
   
@@ -3015,8 +3021,12 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForest *forest) {
 	double drvj = fEvts[iev]->Derivative(jdrv);
         //double drv2ij = fEvts[iev]->ParmMatrix()(idrv,jdrv);
         
+        //double updval = d2L(iel,jel) + weight*drvi*drvj*invpdfsq;
         
-        d2Lmaps[ithread][std::pair<int,int>(iel,jel)] += weight*drvi*drvj*invpdfsq;
+        #pragma omp atomic update
+        d2L(iel,jel) += weight*drvi*drvj*invpdfsq;
+        
+        //d2Lmaps[ithread][std::pair<int,int>(iel,jel)] += weight*drvi*drvj*invpdfsq;
 	//d2Ls[ithread][iel][jel] += weight*drvi*drvj*invpdfsq;
         //d2Ls[ithread][iel][jel] +=  -weight*drv2ij*invpdf + weight*drvi*drvj*invpdfsq;
 
@@ -3035,9 +3045,9 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForest *forest) {
     if (!usematrix) continue;
 
     
-    for (std::map<std::pair<int, int>, double>::const_iterator it=d2Lmaps[ithread].begin(); it!=d2Lmaps[ithread].end(); ++it) {
-      d2Lmap[it->first] += it->second;
-    }
+//     for (std::map<std::pair<int, int>, double>::const_iterator it=d2Lmaps[ithread].begin(); it!=d2Lmaps[ithread].end(); ++it) {
+//       d2Lmap[it->first] += it->second;
+//     }
   }
 
   
@@ -3072,8 +3082,8 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForest *forest) {
 	  drv2ij = Derivative2(static_cast<RooAbsReal*>(fFullFuncs.at(infunc)),static_cast<RooRealVar*>(fFullParms.at(idrv)),static_cast<RooRealVar*>(fFullParms.at(jdrv)),&parmset,1e-3*static_cast<RooRealVar*>(fFullParms.at(idrv))->getError(),1e-3*static_cast<RooRealVar*>(fFullParms.at(jdrv))->getError());
 	}
 	
-	//d2L[iel][jel] += drv2ij;
-	d2Lmap[std::pair<int,int>(iel,jel)] += drv2ij;
+	d2L[iel][jel] += drv2ij;
+	//d2Lmap[std::pair<int,int>(iel,jel)] += drv2ij;
 	
     }
 	
@@ -3084,25 +3094,35 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForest *forest) {
 //  double sumweight = 0.;
   
   //symmetrize matrix
-//   for (int i=0; i<msize; ++i) {
-//     for (int j=0; j<i; ++j) {
-//       assert(d2L(i,j)==0.);
-//       d2L(i,j) = d2L(j,i);
-//     }
-//   }
+  if (usematrix) {
+    #pragma omp parallel for
+    for (int i=0; i<msize; ++i) {
+      for (int j=0; j<i; ++j) {
+	assert(d2L(i,j)==0.);
+	d2L(i,j) = d2L(j,i);
+      }
+    }
+  }
 
+  bool solved = false;
+  TVectorD dpar(msize);    
+  
 //solve
-//   TVectorD dLc(dL);
-//   bool solved = false;
-//   TDecompBK dbk(d2L);
-//   solved = dbk.Solve(dLc);
-//   TVectorD dpar = -1.0*dLc;
-
+  if (usematrix) {
+    TVectorD dLc(dL);
+    printf("start matrix decomposition\n");  
+    //TDecompLU dbk(d2L);
+    TDecompBK dbk(d2L);
+    //TDecompChol dbk(d2L);
+    solved = dbk.Solve(dLc);
+    printf("done matrix decomposition\n");  
+    dpar = -1.0*dLc;
+  }
 
   
 
-  bool solved = false;
-  TVectorD dpar(msize);  
+//   bool solved = false;
+//   TVectorD dpar(msize);  
   
 //   double maxscale = 0.;
 //   for (int iel=0; iel<msize; ++iel) {
@@ -3140,67 +3160,140 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForest *forest) {
   
   
   
-  if (usematrix) {
-    //symmetrize matrix
-    for (std::map<std::pair<int, int>, double>::const_iterator it=d2Lmap.begin(); it!=d2Lmap.end(); ++it) {
-      d2Lmap[std::pair<int,int>(it->first.second,it->first.first)] = it->second;
-    }
-    
-    printf("create sparse matrix, msize = %i, nnzr = %i\n",msize,int(d2Lmap.size()));;
-    
-    
-    sparserows.resize(d2Lmap.size());
-    sparsecols.resize(d2Lmap.size());
-    sparsedata.resize(d2Lmap.size());
-    
-    {
-      int isparse = 0;
-      for (std::map<std::pair<int, int>, double>::const_iterator it=d2Lmap.begin(); it!=d2Lmap.end(); ++it, ++isparse) {
-	sparserows[isparse] = it->first.first;
-	sparsecols[isparse] = it->first.second;
-	sparsedata[isparse] = it->second;
-      }
-    }
-
-    TMatrixDSparse d2L(msize,msize);
-    d2L.SetMatrixArray(sparsedata.size(), &sparserows[0], &sparsecols[0], &sparsedata[0]);
-  
-    printf("start matrix decomposition\n");
-    TVectorD dLc(dL);
-    TDecompSparse dsp(d2L,0);
-    solved = dsp.Solve(dLc);
-    dpar = -1.0*dLc;
-    printf("done matrix decomposition\n");
-    
-    double drv=0.;
-    for (int ipar=0; ipar<msize; ++ipar) {
-      drv += dpar[ipar]*dL[ipar];
-      if (std::isnan(dL[ipar]) || std::isinf(dL[ipar])) {
-	solved = false;
-      }
-    }
-    
-    if (drv>=0) {
-      solved = false;
-    }
-    
-  }
+//   if (usematrix) {
+//     //symmetrize matrix
+//     for (std::map<std::pair<int, int>, double>::const_iterator it=d2Lmap.begin(); it!=d2Lmap.end(); ++it) {
+//       d2Lmap[std::pair<int,int>(it->first.second,it->first.first)] = it->second;
+//     }
+//     
+//     printf("create sparse matrix, msize = %i, nnzr = %i\n",msize,int(d2Lmap.size()));;
+//     
+//     
+//     sparserows.resize(d2Lmap.size());
+//     sparsecols.resize(d2Lmap.size());
+//     sparsedata.resize(d2Lmap.size());
+//     
+//     {
+//       int isparse = 0;
+//       for (std::map<std::pair<int, int>, double>::const_iterator it=d2Lmap.begin(); it!=d2Lmap.end(); ++it, ++isparse) {
+// 	sparserows[isparse] = it->first.first;
+// 	sparsecols[isparse] = it->first.second;
+// 	sparsedata[isparse] = it->second;
+//       }
+//     }
+// 
+//     TMatrixDSparse d2L(msize,msize);
+//     d2L.SetMatrixArray(sparsedata.size(), &sparserows[0], &sparsecols[0], &sparsedata[0]);
+//   
+//     printf("start matrix decomposition\n");
+//     TVectorD dLc(dL);
+//     TDecompSparse dsp(d2L,0);
+//     solved = dsp.Solve(dLc);
+//     dpar = -1.0*dLc;
+//     printf("done matrix decomposition\n");
+//     
+//     double drv=0.;
+//     for (int ipar=0; ipar<msize; ++ipar) {
+//       drv += dpar[ipar]*dL[ipar];
+//       if (std::isnan(dL[ipar]) || std::isinf(dL[ipar])) {
+// 	solved = false;
+//       }
+//     }
+//     
+//     if (drv>=0) {
+//       solved = false;
+//     }
+//     
+//   }
   
  // printf("FitRespones done invert\n");
 
   
   double step = fShrinkage;
 
-
-  
+  double drvstep = 1e-3;
   if (!solved) {
  // if (1) {  
     printf("fallback to gradient descent\n");
     dpar = -1.0*dL;
-    step = 1e-4;
+    drvstep = 1e-9;
   }
   
-//   step = fShrinkage;
+//   double maxscale = 0.;
+//   for (int iel=0; iel<msize; ++iel) {
+//     int iparm;
+//     if (iel<fExtVars.getSize()) {
+//       iparm = iel;
+//     }
+//     else {
+//       //iel = localidxs[itgt] + termidx
+//       //iparm = (iel-fExtVars.getSize())%fNTargets;
+//       int tgt = 0;
+//       for (int itgt=0; itgt<fNTargets; ++itgt) {
+//         if (iel>=localidxs[itgt]) {
+//           tgt = itgt;
+//           break;
+//         }        
+//       }
+//       iparm = fExtVars.getSize() + tgt;
+//     }
+//     double scale = dpar[iel]/fStepSizes[iparm];
+//     if (scale>maxscale) {
+//       maxscale = scale;
+//     }
+//   }
+  
+//   double nlldrv=0;
+//   for (int iel=0; iel<msize; ++iel) {
+//     nlldrv += dpar[iel]*dL[iel];
+//   }
+  
+  
+  //double drvstep = 1.0/maxscale;
+  if (fShrinkage<0.85)
+  {
+  
+    double upnllval = EvalLoss(forest,drvstep,dpar);
+    double downnllval = EvalLoss(forest,-drvstep,dpar);
+    
+    double nlldrv = (upnllval - downnllval)/(2.0*drvstep);
+    double nlldrv2 = (upnllval + downnllval - 2.0*fNLLVal)/drvstep/drvstep;
+    
+    double maxscale = 0.;
+    step = -fShrinkage*nlldrv/nlldrv2;
+    
+    
+    printf("upnllval = %5f, downnllval = %5f, fNLLVal = %5f, maxscale = %5f, drvstep = %5f, nlldrv = %5f, nlldrv2 = %5f, step = %5f\n",upnllval,downnllval,fNLLVal,maxscale,drvstep,nlldrv,nlldrv2,step);
+    
+    if (nlldrv>=0. || nlldrv2<=0.) step = 0.1*fShrinkage;
+        
+    
+    
+  }
+  else {
+    step = fShrinkage;
+  }
+   
+//   if (!solved) {
+//     printf("fallback to gradient descent\n");
+//     
+//     dpar = -1.0*dL;
+//     drvstep = 1e-9;
+//     
+//     double upnllval = EvalLoss(forest,drvstep,dpar);
+//     double downnllval = EvalLoss(forest,-drvstep,dpar);
+//     
+//     double nlldrv = (upnllval - downnllval)/(2.0*drvstep);
+//     double nlldrv2 = (upnllval + downnllval - 2.0*fNLLVal)/drvstep/drvstep;
+//     
+//     double maxscale = 0.;
+//     step = -fShrinkage*nlldrv/nlldrv2;
+//     
+//     printf("upnllval = %5f, downnllval = %5f, fNLLVal = %5f, maxscale = %5f, drvstep = %5f, nlldrv = %5f, nlldrv2 = %5f, step = %5f\n",upnllval,downnllval,fNLLVal,maxscale,drvstep,nlldrv,nlldrv2,step);    
+//     
+//   }
+  //step = fShrinkage;
+  
 //   for (int iel=0; iel<msize; ++iel) {
 //     dpar[iel] = -dL[iel]/d2L(iel,iel);
 //   }

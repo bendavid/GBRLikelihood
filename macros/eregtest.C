@@ -123,7 +123,7 @@ Double_t effSigma(TH1 * hist)
 
 void eregtest() {
   
-  TFile *fws = TFile::Open("/afs/cern.ch/work/b/bendavid/bare/eregtesteleJul7_200/wereg.root");
+  TFile *fws = TFile::Open("/afs/cern.ch/work/b/bendavid/bare/eregtesteleJul8_sig5_01_2000/wereg.root");
   RooWorkspace *ws = (RooWorkspace*)fws->Get("wereg");
   
   RooGBRFunction *func = static_cast<RooGBRFunction*>(ws->arg("func"));

@@ -140,7 +140,7 @@ void eregtraining(double minevents=200) {
   TCut oddevents = "(evt%2==1)";
   //TCut oddevents = prescale100; 
   
-  weightvar.SetTitle(evenevents*selcut);
+  weightvar.SetTitle(prescale100*selcut);
   RooDataSet *hdata = RooTreeConvert::CreateDataSet("hdata",dtree,vars,weightvar);   
   
 //   weightvar.SetTitle(prescale1000*selcut);
