@@ -2,6 +2,7 @@
 #include "../interface/HybridGBRForest.h"
 #include "../interface/RooHybridBDTAutoPdf.h"
 #include "../interface/RooDoubleCBFast.h"
+#include "../interface/RooCBExp.h"
 
 #ifdef __CINT__
 #pragma link off all globals;
@@ -18,9 +19,8 @@
 #pragma link C++ class RooRealConstraint+;
 #pragma link C++ class RooPowerLaw+;
 #pragma link C++ class RooDoubleCBFast+;
-#pragma link C++ class RooDoubleCBSlow+;
+#pragma link C++ class RooCBExp+;
 
-
-
+ 
 
 #endif

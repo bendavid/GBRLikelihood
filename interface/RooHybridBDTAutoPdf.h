@@ -253,6 +253,7 @@ public:
   void SetMinEvents(int n)             { fMinEvents = n;            }
   void SetShrinkage(double x)          { fShrinkage = x;            }
   void SetMinCutSignificance(double x); //  { fMinCutSignificance = x*x/2.0; }
+  void SetMaxNSpurious(double x) { fMaxNSpurious = x; }
   void SetTransitionQuantile(float x)  { fTransitionQuantile = x;   }
   void SetMinWeights(const std::vector<double> &minweights) { fMinWeights = minweights; }
   void SetMaxDepth(int depth) { fMaxDepth = depth; } 
@@ -407,8 +408,9 @@ protected:
   float                     fTransitionQuantile;
   double                    fMinCutSignificance;
   double                    fMinCutSignificanceMulti;
+  double                    fMaxNSpurious;
   
-  
+  double                    fSumWTimesNVars;
   
   
   int                       fMaxDepth;

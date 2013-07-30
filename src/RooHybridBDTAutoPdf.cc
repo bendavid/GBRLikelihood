@@ -169,10 +169,17 @@ RooDataSet *RooTreeConvert::CreateDataSet(std::string name, TTree *tree, RooArgL
     
     if (weight==0.) continue; //skip events with 0 weight
     
+    bool valid = true;
     for (int ivar=0; ivar<vars.getSize(); ++ivar) {
       double val = inputforms[ivar]->EvalInstance();
-      static_cast<RooRealVar*>(vars.at(ivar))->setVal(val);
+      RooRealVar *var = static_cast<RooRealVar*>(vars.at(ivar));
+      if (val<var->getMin() || val>var->getMax()) {
+        valid = false;
+      }
+      var->setVal(val);
     }
+    if (!valid) continue;
+    
     dset->add(vars,weight);
 
   }
@@ -622,6 +629,8 @@ RooHybridBDTAutoPdf::RooHybridBDTAutoPdf(const char *name, const char *title, Ro
   fTransitionQuantile(0.7),
   fMinCutSignificance(-99.),
   fMinCutSignificanceMulti(-99.),
+  fMaxNSpurious(-99.),
+  fSumWTimesNVars(0.),
   fMaxDepth(-1),
   fMaxNodes(-1),
   fNTargets(tgtvars.getSize()),  
@@ -1056,6 +1065,8 @@ RooHybridBDTAutoPdf::RooHybridBDTAutoPdf(const char *name, const char *title, Ro
       }    
     }
   }
+  
+  fSumWTimesNVars = sumw*fCondVars.getSize();
   
   printf("filled data\n");
     
@@ -1974,15 +1985,27 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
       if ( _bsepgains[ivar][ibin]>maxsepgain && !std::isinf(_bsepgains[ivar][ibin]) && _sumtgt2s[ivar][ibin]>0. && (sumtgt2-_sumtgt2s[ivar][ibin])>0.) {
 	
 	bool passminweights = true;
+	double minweights = std::numeric_limits<double>::max();
 	for (int icls=0; icls<ncls; ++icls) {
-	  if (_sumwscls[ivar][icls][ibin]<fMinWeights[icls] || (_sumwscls[ivar][icls][nbins-1] - _sumwscls[ivar][icls][ibin])<fMinWeights[icls]) {
+	  double minweightcls = std::min(_sumwscls[ivar][icls][ibin], _sumwscls[ivar][icls][nbins-1] - _sumwscls[ivar][icls][ibin]);
+	  if (minweightcls < fMinWeights[icls]) {
 	    passminweights = false;
 	  }
+	  if (minweightcls < minweights) {
+	    minweights = minweightcls;
+	  }
 	}
-
-        //bool passminweights = ( _sumws[ivar][ibin]>=fMinWeights[0] && (sumw-_sumws[ivar][ibin])>=fMinWeights[0] );
 	
-	bool passminsig = fMinCutSignificance<0. || (_bsepgains[ivar][ibin] > fMinCutSignificance);
+	
+	bool passminsig = true;
+	
+	passminsig &= fMinCutSignificance<0. || (_bsepgains[ivar][ibin] > fMinCutSignificance);
+	
+        if (fMaxNSpurious >= 0.) {
+          double prob = 1.0 - TMath::Erf(sqrt(_bsepgains[ivar][ibin]));
+          double nspurious = fSumWTimesNVars*prob;	
+          passminsig &= nspurious<fMaxNSpurious;	
+        }
 	
 	if (passminweights && passminsig) {
 	  maxsepgain = _bsepgains[ivar][ibin];
@@ -2291,6 +2314,7 @@ double RooHybridBDTAutoPdf::EvalLossRooFit() {
   #pragma omp parallel for
   for (unsigned int ievt=0; ievt<fEvts.size(); ++ievt) {
 
+    //if (ievt%20!=0) continue;
     if (ievt%100!=0) continue;
     
     int ithread =  omp_get_thread_num();
@@ -3265,7 +3289,7 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForest *forest) {
     
     printf("upnllval = %5f, downnllval = %5f, fNLLVal = %5f, maxscale = %5f, drvstep = %5f, nlldrv = %5f, nlldrv2 = %5f, step = %5f\n",upnllval,downnllval,fNLLVal,maxscale,drvstep,nlldrv,nlldrv2,step);
     
-    if (nlldrv>=0. || nlldrv2<=0.) step = 0.1*fShrinkage;
+    if (nlldrv>=0. || nlldrv2<=0. || std::isnan(step) || std::isinf(step)) step = 0.1*fShrinkage;
         
     
     

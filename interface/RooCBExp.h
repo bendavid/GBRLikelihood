@@ -1,25 +1,24 @@
-#ifndef ROODOUBLECB
-#define ROODOUBLECB
+#ifndef ROOCBEXP
+#define ROOCBEXP
 
 #include "RooAbsPdf.h"
 #include "RooRealProxy.h"
 #include "RooAbsReal.h"
 
-class RooDoubleCBFast : public RooAbsPdf {
+class RooCBExp : public RooAbsPdf {
 public:
-  RooDoubleCBFast();
-  RooDoubleCBFast(const char *name, const char *title,
+  RooCBExp();
+  RooCBExp(const char *name, const char *title,
               RooAbsReal& _x,
               RooAbsReal& _mean,
               RooAbsReal& _width,
               RooAbsReal& _alpha1,
               RooAbsReal& _n1,
-              RooAbsReal& _alpha2,
-              RooAbsReal& _n2
+              RooAbsReal& _alpha2
            );
-  RooDoubleCBFast(const RooDoubleCBFast& other, const char* name=0) ;
-  virtual TObject* clone(const char* newname) const { return new RooDoubleCBFast(*this,newname); }
-  inline virtual ~RooDoubleCBFast() { }
+  RooCBExp(const RooCBExp& other, const char* name=0) ;
+  virtual TObject* clone(const char* newname) const { return new RooCBExp(*this,newname); }
+  inline virtual ~RooCBExp() { }
   Int_t getAnalyticalIntegral(RooArgSet& allVars, RooArgSet& analVars, const char* rangeName=0) const ;
   Double_t analyticalIntegral(Int_t code, const char* rangeName=0) const ;
 
@@ -31,12 +30,11 @@ protected:
   RooRealProxy alpha1;
   RooRealProxy n1;
   RooRealProxy alpha2;
-  RooRealProxy n2;
   
   Double_t evaluate() const ;
 
 private:
 
-  ClassDef(RooDoubleCBFast,1)
+  ClassDef(RooCBExp,1)
 };
 #endif
