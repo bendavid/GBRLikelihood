@@ -54,21 +54,23 @@ using namespace RooFit;
  double RooDoubleCBFast::evaluate() const 
  { 
    double t = (x-mean)*vdt::fast_inv(width);
+   double val = -99.;
    if(t>-alpha1 && t<alpha2){
-     return vdt::fast_exp(-0.5*t*t);
+     val = vdt::fast_exp(-0.5*t*t);
    }else if(t<=-alpha1){
      double n1invalpha1 = n1*vdt::fast_inv(fabs(alpha1));
      double A1 = gbrmath::fast_pow(n1invalpha1,n1)*vdt::fast_exp(-alpha1*alpha1/2.);
      double B1 = n1invalpha1-fabs(alpha1);
-     return A1*gbrmath::fast_pow(B1-t,-n1);
+     val = A1*gbrmath::fast_pow(B1-t,-n1);
    }else if(t>=alpha2){
      double n2invalpha2 = n1*vdt::fast_inv(fabs(alpha2));
      double A2 = gbrmath::fast_pow(n2invalpha2,n2)*vdt::fast_exp(-alpha2*alpha2/2.);
      double B2 = n2invalpha2-fabs(alpha2);
-     return A2*gbrmath::fast_pow(B2+t,-n2);
+     val = A2*gbrmath::fast_pow(B2+t,-n2);
    }//else{
      //cout << "ERROR evaluating range..." << endl;
-   return -99.;
+   return val;
+   //return std::max(double(std::numeric_limits<float>::min()),val);
    //}
     
  } 

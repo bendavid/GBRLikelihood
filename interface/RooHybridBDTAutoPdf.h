@@ -258,6 +258,7 @@ public:
   void SetMinWeights(const std::vector<double> &minweights) { fMinWeights = minweights; }
   void SetMaxDepth(int depth) { fMaxDepth = depth; } 
   void SetMaxNodes(int max) { fMaxNodes = max; }
+  void SetPrescaleInit(int n) { fPrescaleInit = n; }
  
   const HybridGBRForest *TrainForest(int ntrees, bool reuseforest = false);  
   
@@ -423,7 +424,8 @@ protected:
   double                   fNLLVal;
   double                   fdLdR;
   
-
+  int                      fPrescaleInit;
+  
   float *_sepgains; 
   float *_sepgainsigs; 
   float *_cutvals;  

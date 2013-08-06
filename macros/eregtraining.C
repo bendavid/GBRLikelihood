@@ -39,14 +39,47 @@
 #include "RooAddition.h"
 #include "TSystem.h"
 #include "RooLinearVar.h"
-
-using namespace RooFit;
+#include "RooCBExp.h"
  
-void eregtraining(double minevents=200) {
+using namespace RooFit;
   
+double getweight(TFile *file, double xsec) {
+ 
+  TDirectory *dir = (TDirectory*)file->FindObjectAny("AnaFwkMod");
+  TH1D *hallevts = (TH1D*)dir->Get("hDAllEvents");
+  
+  return xsec/hallevts->GetSumOfWeights();
+  
+}
+
+float xsecweights[50];
+float xsecweight(int procidx=0) {
+  return xsecweights[procidx];
+}
+
+void initweights(TChain *chain, float *xsecs, float lumi) {
+ 
+  TObjArray *files = chain->GetListOfFiles();
+  for (int i=0; i<files->GetEntries(); ++i) {    
+    TFile *file = TFile::Open(files->At(i)->GetTitle(),"READ");
+    
+    xsecweights[i] = getweight(file,lumi*xsecs[i]);
+    
+    file->Close();    
+  } 
+  
+  chain->SetAlias("procidx","This->GetTreeNumber()");
+  
+}
+
+void eregtraining(bool dobarrel, bool doele) {
+   
 //   gSystem->Setenv("OMP_WAIT_POLICY","PASSIVE");
   
-  TString dirname = TString::Format("/afs/cern.ch/work/b/bendavid/bare/eregtesteleJul7_%i/",int(minevents)); 
+  //candidate to set fixed alpha values (0.9,3.8)
+  //TString dirname = TString::Format("/afs/cern.ch/work/b/bendavid/bare/eregtesteleJul30_sig5_01_alphafloat5_%i/",int(minevents)); 
+  
+  TString dirname = "/afs/cern.ch/work/b/bendavid/bare/eregRC2Aug6/"; 
   gSystem->mkdir(dirname,true);
   gSystem->cd(dirname);  
   
@@ -55,7 +88,6 @@ void eregtraining(double minevents=200) {
   varsf->push_back("ph.sceta");
   varsf->push_back("ph.scphi");
   varsf->push_back("ph.r9");  
-  varsf->push_back("ph.e5x5/ph.scrawe");  
   varsf->push_back("ph.scetawidth");
   varsf->push_back("ph.scphiwidth");  
   varsf->push_back("ph.scnclusters");
@@ -66,25 +98,27 @@ void eregtraining(double minevents=200) {
   varsf->push_back("ph.etaseed-ph.sceta");
   varsf->push_back("atan2(sin(ph.phiseed-ph.scphi),cos(ph.phiseed-ph.scphi))");
   varsf->push_back("ph.eseed/ph.scrawe");
-  varsf->push_back("ph.e3x3seed/ph.eseed");
-  varsf->push_back("ph.e5x5seed/ph.eseed");
+  
+  varsf->push_back("ph.e3x3seed/ph.e5x5seed");
   varsf->push_back("ph.sigietaietaseed");   
   varsf->push_back("ph.sigiphiphiseed");   
   varsf->push_back("ph.covietaiphiseed");
-  varsf->push_back("ph.emaxseed/ph.eseed");
-  varsf->push_back("ph.e2ndseed/ph.eseed");
-  varsf->push_back("ph.etopseed/ph.eseed");
-  varsf->push_back("ph.ebottomseed/ph.eseed");
-  varsf->push_back("ph.eleftseed/ph.eseed");
-  varsf->push_back("ph.erightseed/ph.eseed");
-  varsf->push_back("ph.e2x5maxseed/ph.eseed");
-  varsf->push_back("ph.e2x5topseed/ph.eseed");
-  varsf->push_back("ph.e2x5bottomseed/ph.eseed");
-  varsf->push_back("ph.e2x5leftseed/ph.eseed");
-  varsf->push_back("ph.e2x5rightseed/ph.eseed");
+  varsf->push_back("ph.emaxseed/ph.e5x5seed");
+  varsf->push_back("ph.e2ndseed/ph.e5x5seed");
+  varsf->push_back("ph.etopseed/ph.e5x5seed");
+  varsf->push_back("ph.ebottomseed/ph.e5x5seed");
+  varsf->push_back("ph.eleftseed/ph.e5x5seed");
+  varsf->push_back("ph.erightseed/ph.e5x5seed");
+  varsf->push_back("ph.e2x5maxseed/ph.e5x5seed");
+  varsf->push_back("ph.e2x5topseed/ph.e5x5seed");
+  varsf->push_back("ph.e2x5bottomseed/ph.e5x5seed");
+  varsf->push_back("ph.e2x5leftseed/ph.e5x5seed");
+  varsf->push_back("ph.e2x5rightseed/ph.e5x5seed");
   
   std::vector<std::string> *varseb = new std::vector<std::string>(*varsf);
   std::vector<std::string> *varsee = new std::vector<std::string>(*varsf);
+  
+  varseb->push_back("ph.e5x5seed/ph.eseed");
   
   varseb->push_back("ph.ietaseed");
   varseb->push_back("ph.iphiseed");
@@ -97,41 +131,85 @@ void eregtraining(double minevents=200) {
 
   varsee->push_back("ph.scpse/ph.scrawe");
     
+  std::vector<std::string> *varslist;
+  if (dobarrel) varslist = varseb;
+  else varslist = varsee;
+  
   RooArgList vars;
-  for (unsigned int ivar=0; ivar<varseb->size(); ++ivar) {
-    RooRealVar *var = new RooRealVar(TString::Format("var_%i",ivar),varseb->at(ivar).c_str(),0.);
+  for (unsigned int ivar=0; ivar<varslist->size(); ++ivar) {
+    RooRealVar *var = new RooRealVar(TString::Format("var_%i",ivar),varslist->at(ivar).c_str(),0.);
     vars.addOwned(*var);
   }
   
   RooArgList condvars(vars);
   
   RooRealVar *tgtvar = new RooRealVar("tgtvar","ph.scrawe/ph.gene",1.);
-  //RooRealVar *tgtvar = new RooRealVar("tgtvar","ph.gene/ph.scrawe",1.,0.,2.);
-  //tgtvar->setBins(800);
+  if (!dobarrel) tgtvar->SetTitle("(ph.scrawe + ph.scpse)/ph.gene");
   vars.addOwned(*tgtvar);
 
-  RooRealVar testvar("testvar","ph.e/ph.gene",1.,0.,2.);
-  testvar.setBins(800);
-  RooArgList varstest;
-  varstest.add(testvar);
+
   
   //varstest.add(*tgtvar);
     
   RooRealVar weightvar("weightvar","",1.);
 
   //TFile *fdin = TFile::Open("/home/mingyang/cms/hist/hgg-2013Moriond/merged/hgg-2013Moriond_s12-diphoj-3-v7a_noskim.root");
-  TFile *fdin = TFile::Open("root://eoscms.cern.ch//eos/cms/store/cmst3/user/bendavid/trainingtreesJul1/hgg-2013Final8TeV_s12-zllm50-v7n_noskim.root");
-  TDirectory *ddir = (TDirectory*)fdin->FindObjectAny("PhotonTreeWriterSingleInvert");
-  TTree *dtree = (TTree*)ddir->Get("hPhotonTreeSingle");    
+//   TFile *fdin = TFile::Open("root://eoscms.cern.ch//eos/cms/store/cmst3/user/bendavid/trainingtreesJul1/hgg-2013Final8TeV_s12-zllm50-v7n_noskim.root");
+//   TDirectory *ddir = (TDirectory*)fdin->FindObjectAny("PhotonTreeWriterSingleInvert");
+//   TTree *dtree = (TTree*)ddir->Get("hPhotonTreeSingle");    
   
 /*  TFile *fdinsig = TFile::Open("root://eoscms.cern.ch//eos/cms/store/cmst3/user/bendavid/trainingtreesJul1/hgg-2013Moriond_s12-h125gg-gf-v7a_noskim.root");
   TDirectory *ddirsig = (TDirectory*)fdinsig->FindObjectAny("PhotonTreeWriterPreselNoSmear");
   TTree *dtreesig = (TTree*)ddirsig->Get("hPhotonTreeSingle");     */ 
   
-  TCut selcut = "ph.pt>25. && ph.isbarrel && ph.ispromptgen"; 
-  //TCut selcut = "ph.pt>25. && ph.isbarrel && (ph.scrawe/ph.gene)>0. && (ph.scrawe/ph.gene)<2. && ph.ispromptgen";
-  //TCut selcut = "ph.pt>25. && ph.isbarrel && (ph.gene/ph.scrawe)>0. && (ph.gene/ph.scrawe)<2.";
-  TCut selweight = "xsecweight(procidx)*puweight(numPU,procidx)";
+  TString treeloc;
+  if (doele) {
+    treeloc = "RunLumiSelectionMod/MCProcessSelectionMod/HLTModP/GoodPVFilterMod/PhotonIDModPreselInvert/PhotonTreeWriterSingleInvert/hPhotonTreeSingle";
+  }
+  else {
+    treeloc = "RunLumiSelectionMod/MCProcessSelectionMod/HLTModP/GoodPVFilterMod/PhotonIDModPresel/PhotonTreeWriterSingle/hPhotonTreeSingle";
+  }
+
+  TChain *tree;
+  float xsecs[50];
+
+      
+  if (doele) {
+    tree = new TChain("RunLumiSelectionMod/MCProcessSelectionMod/HLTModP/GoodPVFilterMod/PhotonIDModPreselInvert/PhotonTreeWriterSingleInvert/hPhotonTreeSingle");
+    tree->Add("root://eoscms.cern.ch//eos/cms/store/cmst3/user/bendavid/regTreesAug1/hgg-2013Final8TeV_reg_s12-zllm50-v7n_noskim.root");
+    
+    xsecs[0] = 1.;
+    initweights(tree,xsecs,1.);      
+    
+    xsecweights[0] = 1.0;
+    
+  }
+  else {
+    tree = new TChain("RunLumiSelectionMod/MCProcessSelectionMod/HLTModP/GoodPVFilterMod/PhotonIDModPresel/PhotonTreeWriterSingle/hPhotonTreeSingle");
+    tree->Add("root://eoscms.cern.ch//eos/cms/store/cmst3/user/bendavid/regTreesAug1/hgg-2013Final8TeV_reg_s12-pj20_40-2em-v7n_noskim.root");
+    tree->Add("root://eoscms.cern.ch//eos/cms/store/cmst3/user/bendavid/regTreesAug1/hgg-2013Final8TeV_reg_s12-pj40-2em-v7n_noskim.root");
+    
+    xsecs[0] = 0.001835*81930.0;
+    xsecs[1] = 0.05387*8884.0;    
+    initweights(tree,xsecs,1.);  
+    
+    double weightscale = xsecweights[1];
+    xsecweights[0] /= weightscale;
+    xsecweights[1] /= weightscale;
+  }
+  
+  
+  TCut selcut;
+  if (dobarrel) {
+    selcut = "ph.genpt>16. && ph.isbarrel && ph.ispromptgen"; 
+  }
+  else {
+    selcut = "ph.genpt>16. && !ph.isbarrel && ph.ispromptgen";     
+  }
+  
+
+  
+  TCut selweight = "xsecweight(procidx)";
   TCut prescale10 = "(evt%10==0)";
   TCut prescale25 = "(evt%25==0)";
   TCut prescale100 = "(evt%100==0)";  
@@ -140,8 +218,20 @@ void eregtraining(double minevents=200) {
   TCut oddevents = "(evt%2==1)";
   //TCut oddevents = prescale100; 
   
-  weightvar.SetTitle(prescale100*selcut);
-  RooDataSet *hdata = RooTreeConvert::CreateDataSet("hdata",dtree,vars,weightvar);   
+  //weightvar.SetTitle(prescale10*selcut);
+  
+/*  new TCanvas;
+  tree->Draw("ph.genpt>>hpt(200,0.,100.)",selweight*selcut);
+
+  return;*/  
+  
+  if (doele) {
+    weightvar.SetTitle(evenevents*selcut);
+  }
+  else {
+    weightvar.SetTitle(selweight*selcut);
+  }
+  RooDataSet *hdata = RooTreeConvert::CreateDataSet("hdata",tree,vars,weightvar);   
   
 //   weightvar.SetTitle(prescale1000*selcut);
 //   RooDataSet *hdatasig = RooTreeConvert::CreateDataSet("hdatasig",dtree,vars,weightvar);   
@@ -159,110 +249,48 @@ void eregtraining(double minevents=200) {
   RooRealVar sigmeantvar("sigmeantvar","",1.);
   sigmeantvar.setConstant(false); 
 
-  RooRealVar sigalphavar("sigalphavar","",1.0);
+  RooRealVar sigalphavar("sigalphavar","",1.);
   sigalphavar.setConstant(false);   
   
   RooRealVar signvar("signvar","",1.);
   signvar.setConstant(false);     
 
-  RooRealVar sigalpha2var("sigalpha2var","",1.0);
+  RooRealVar sigalpha2var("sigalpha2var","",1.);
   sigalpha2var.setConstant(false);   
   
   RooRealVar sign2var("sign2var","",1.);
   sign2var.setConstant(false);     
   
   
-  RooRealVar sigmean2var("sigmean2var","",1.);
-  sigmean2var.setConstant(false);       
-
-  RooRealVar sigwidth2var("sigwidth2var","",0.04);
-  sigwidth2var.setConstant(false);
-  
-  RooRealVar sigmean3var("sigmean3var","",1.);
-  sigmean3var.setConstant(false);       
-
-  RooRealVar sigwidth3var("sigwidth3var","",8.0);
-  sigwidth3var.setConstant(false);
    
-  RooRealVar sigfracvar("sigfracvar","",0.8);
-  sigfracvar.setConstant(false);  
-
-  RooRealVar sigfrac2var("sigfrac2var","",0.8);
-  sigfrac2var.setConstant(false);    
-  
   RooArgList tgts;
-  RooGBRFunction func("func","",condvars,9);
+  RooGBRFunction func("func","",condvars,6);
   RooGBRTarget sigwidtht("sigwidtht","",func,0,sigwidthtvar);
   RooGBRTarget sigmeant("sigmeant","",func,1,sigmeantvar);
   RooGBRTarget sigalpha("sigalpha","",func,2,sigalphavar);
   RooGBRTarget signt("signt","",func,3,signvar);
-  RooGBRTarget sigmean2("sigmean2","",func,4,sigmean2var);
-  RooGBRTarget sigwidth2("sigwidth2","",func,5,sigwidth2var);  
-  RooGBRTarget sigfrac("sigfrac","",func,6,sigfracvar);
-  RooGBRTarget sigalpha2("sigalpha2","",func,7,sigalpha2var);
-  RooGBRTarget sign2t("sign2t","",func,8,sign2var);
-   
+  RooGBRTarget sigalpha2("sigalpha2","",func,4,sigalpha2var);
+  RooGBRTarget sign2t("sign2t","",func,5,sign2var);
   
- tgts.add(sigwidtht);
+  tgts.add(sigwidtht);
   tgts.add(sigmeant);
   tgts.add(sigalpha);
   tgts.add(signt);
   tgts.add(sigalpha2);
   tgts.add(sign2t);
-//    tgts.add(sigmean2);
-//   tgts.add(sigwidth2);
-//   tgts.add(sigfrac);
 
-
-   
-  
   RooRealConstraint sigwidthlim("sigwidthlim","",sigwidtht,0.0002,0.5);
   RooRealConstraint sigmeanlim("sigmeanlim","",sigmeant,0.2,2.0); 
   
-  RooRealConstraint signlim("signlim","",signt,0.,20.); 
+  RooRealConstraint signlim("signlim","",signt,0.,110.); 
   RooRealConstraint sigalphalim("sigalphalim","",sigalpha,0.,5.);
 
-  RooRealConstraint sign2lim("sign2lim","",sign2t,0.,20.); 
-  RooRealConstraint sigalpha2lim("sigalph2alim","",sigalpha2,0.,5.);  
-  
-  //RooRealConstraint sigalphalim("sigalphalim","",sigalpha,-20.,0.); 
-  
-//   RooAbsReal &sigmeanlim = sigmeant;
-//   RooAbsReal &sigwidthlim = sigwidtht;
-  
-  RooRealConstraint sigwidth2lim("sigwidth2lim","",sigwidth2,0.002,0.5);
-  RooRealConstraint sigmean2lim("sigmean2lim","",sigmean2,0.05,2.);      
-  
-  RooRealConstraint sigfraclim("sigfraclim","",sigfrac,0.5,1.0);     
+  RooRealConstraint sign2lim("sign2lim","",sign2t,0.,30.); 
+  RooRealConstraint sigalpha2lim("sigalpha2lim","",sigalpha2,0.,8.0);  
   
   RooLinearVar tgtscaled("tgtscaled","",*tgtvar,sigmeanlim,RooConst(0.));
-  //RooCBShape sigpdf("sigpdf","",tgtscaled,RooConst(1.),sigwidthlim,sigalphalim,signlim);
- // RooCBShape sigpdf("sigpdf","",tgtscaled,RooConst(1.),sigwidthlim,sigalphalim,signlim);
-  //RooCBShape sigpdf("sigpdf","",tgtscaled,RooConst(1.),RooConst(0.008),sigalphalim,signlim);
-  //RooCBShape sigpdf("sigpdf","",*tgtvar,sigmeanlim,sigwidthlim,sigalphalim,signlim);
- // RooGaussian siggaus("siggaus","",tgtscaled,sigmean2lim,sigwidth2lim);
   
   RooDoubleCBFast sigpdf("sigpdf","",tgtscaled,RooConst(1.),sigwidthlim,sigalphalim,signlim,sigalpha2lim,sign2lim);
-  //RooDoubleCBSlow sigpdf("sigpdf","",tgtscaled,RooConst(1.),sigwidthlim,sigalphalim,signlim,sigalpha2lim,sign2lim);
-  
-  
-  //RooDoubleCB sigpdf("sigpdf","",tgtscaled,RooConst(1.),sigwidthlim,RooConst(2.),signlim,RooConst(2.),sign2lim);
-   //RooDoubleCB sigpdf("sigpdf","",*tgtvar,sigmeanlim,sigwidthlim,sigalphalim,signlim,sigalpha2lim,sign2lim);
-  
- // RooGaussian sigpdf("sigpdf","",tgtscaled,RooConst(1.),RooConst(0.005));
-  
- // RooFormulaVar sigreal("sigreal","","@1*exp(-100.*(@0-1.)*(@0-1.))",RooArgList(tgtscaled,sigpdf));
-  
- //  sigpdf.fitTo(*hdata,ConditionalObservables(condvars),NumCPU(16));
-//   return;
-  
-
-   //RooCondAddPdf sigpdf("sigpdf","",RooArgList(sigcb,siggaus),RooArgList(sigfraclim));
-  //RooCBShape &sigpdf = sigcb;
-  //RooDoubleCB sigpdf("sigpdf","",*tgtvar,sigmeanlim,sigwidthlim,sigalphalim,signlim,sigalpha2lim,sign2lim);
-  //RooGaussian sigpdf("sigpdf","",tgtscaled,RooConst(1.),sigwidthlim);
-  
-  //RooFormulaVar sreal("sreal","","@0*exp(-@1*@1)",RooArgList(sigpdf,sigwidthlim));
   
   RooConstVar etermconst("etermconst","",0.);  
   //RooFormulaVar etermconst("etermconst","","1000.*(@0-1.)*(@0-1.)",RooArgList(tgtscaled));
@@ -273,8 +301,12 @@ void eregtraining(double minevents=200) {
   std::vector<RooAbsReal*> vpdf;
   vpdf.push_back(&sigpdf);  
 
+  double minweight;
+  if (dobarrel) minweight = 200.;
+  else minweight = 1000.;
+  
   std::vector<double> minweights;
-  minweights.push_back(minevents);
+  minweights.push_back(minweight);
   
   //ntot.setConstant();
 
@@ -285,87 +317,36 @@ void eregtraining(double minevents=200) {
     vdata.push_back(hdata);    
     
     RooHybridBDTAutoPdf bdtpdfdiff("bdtpdfdiff","",func,tgts,etermconst,r,vdata,vpdf);
-    bdtpdfdiff.SetMinCutSignificance(7.);
-    bdtpdfdiff.SetShrinkage(0.3);
+    bdtpdfdiff.SetMinCutSignificance(5.);
+    bdtpdfdiff.SetPrescaleInit(100);
+    //bdtpdfdiff.SetPrescaleInit(10);
+    //bdtpdfdiff.SetMaxNSpurious(300.);
+    //bdtpdfdiff.SetMaxNSpurious(2400.);
+    bdtpdfdiff.SetShrinkage(0.1);
     bdtpdfdiff.SetMinWeights(minweights);
+    //bdtpdfdiff.SetMaxNodes(270);
+    //bdtpdfdiff.SetMaxNodes(750);
+    bdtpdfdiff.SetMaxNodes(500);
     //bdtpdfdiff.SetMaxDepth(8);
     bdtpdfdiff.TrainForest(1e6);  
     
   }   
-  
+     
   
   RooWorkspace *wereg = new RooWorkspace("wereg");
   wereg->import(sigpdf);
-//   wereg->import(*hdata);
-  //wereg->import(*hdatasigsmall);
-//   wereg->import(*hdatasigtest);
-  wereg->writeToFile("wereg.root");    
+  
+  if (doele && dobarrel)
+    wereg->writeToFile("wereg_ele_eb.root");    
+  else if (doele && !dobarrel) 
+    wereg->writeToFile("wereg_ele_ee.root");    
+  else if (!doele && dobarrel)
+    wereg->writeToFile("wereg_ph_eb.root");    
+  else if (!doele && !dobarrel)
+    wereg->writeToFile("wereg_ph_ee.root");    
   
   
   return;
-  
-  RooFormulaVar ecor("ecor","","@0*@1",RooArgList(*tgtvar,sigmeanlim));
-  RooRealVar *ecorvar = (RooRealVar*)hdatasig->addColumn(ecor);
-  ecorvar->setRange(0.,2.);
-  ecorvar->setBins(800);
-
-/*  RooFormulaVar eraw("eraw","","@0",RooArgList(*tgtvar));
-  RooRealVar *erawvar = (RooRealVar*)hdatasig->addColumn(eraw);
-  erawvar->setRange(0.,2.);
-  erawvar->setBins(400); */ 
-  
-  RooDataSet *hdataclone = new RooDataSet(*hdata,"hdataclone");
-  RooRealVar *meanvar = (RooRealVar*)hdataclone->addColumn(sigmeanlim);
-  RooRealVar *widthvar = (RooRealVar*)hdataclone->addColumn(sigwidthlim);
-  
-  new TCanvas;
-  RooPlot *plot = tgtvar->frame(0.6,1.2,100);
-  hdata->plotOn(plot);
-  sigpdf.plotOn(plot,ProjWData(*hdata));
-  plot->Draw();
-  
-/*  new TCanvas;
-  RooPlot *plotsig = tgtvar->frame(0.6,1.2,100);
-  hdatasig->plotOn(plotsig);
-  sigpdf.plotOn(plotsig,ProjWData(*hdatasig));
-  plotsig->Draw(); */ 
-  
-  new TCanvas;
-  RooPlot *plotmean = meanvar->frame(0.6,1.2,100);
-  hdataclone->plotOn(plotmean);
-  plotmean->Draw();  
-  
-  new TCanvas;
-  RooPlot *plotwidth = widthvar->frame(0.,0.05,100);
-  hdataclone->plotOn(plotwidth);
-  plotwidth->Draw();    
-  
-  TH1 *heold = hdatasigtest->createHistogram("heold",testvar);
-  TH1 *heraw = hdatasig->createHistogram("heraw",*tgtvar,Binning(800,0.,2.));
-  TH1 *hecor = hdatasig->createHistogram("hecor",*ecorvar);
-  
-  heold->SetLineColor(kRed);
-  hecor->SetLineColor(kBlue);
-  heraw->SetLineColor(kMagenta);
-  
-  hecor->GetXaxis()->SetRangeUser(0.6,1.2);
-  heold->GetXaxis()->SetRangeUser(0.6,1.2);
-  
-  new TCanvas;
-  
-  hecor->Draw("HIST");
-  heold->Draw("HISTSAME");
-  heraw->Draw("HISTSAME");
-  
-/*  new TCanvas;
-  RooPlot *ploteold = testvar.frame(0.6,1.2,100);
-  hdatasigtest->plotOn(ploteold);
-  ploteold->Draw();    
-  
-  new TCanvas;
-  RooPlot *plotecor = ecorvar->frame(0.6,1.2,100);
-  hdatasig->plotOn(plotecor);
-  plotecor->Draw(); */   
   
   
 }

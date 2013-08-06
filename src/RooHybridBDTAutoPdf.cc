@@ -634,6 +634,7 @@ RooHybridBDTAutoPdf::RooHybridBDTAutoPdf(const char *name, const char *title, Ro
   fMaxDepth(-1),
   fMaxNodes(-1),
   fNTargets(tgtvars.getSize()),  
+  fPrescaleInit(-1),
   _sepgains(0),
   _ws(0)  
 {
@@ -1587,6 +1588,7 @@ const HybridGBRForest *RooHybridBDTAutoPdf::TrainForest(int ntrees, bool reusefo
     UpdateTargets(nvars,sumw, itree); 
 
     int maxtreesize = 0;
+    int maxtreeidx = 0;
     
     std::vector<int> treesizes(fNTargets);
 
@@ -1608,11 +1610,12 @@ const HybridGBRForest *RooHybridBDTAutoPdf::TrainForest(int ntrees, bool reusefo
       int treesize = treesizes[itgt];
       if (treesize>maxtreesize) {
 	maxtreesize = treesize;
+        maxtreeidx = itgt;
       }      
     }
     
     
-    printf("maxtreesize = %i\n",maxtreesize);
+    printf("maxtreesize = %i, maxtgtidx = %i\n",maxtreesize,maxtreeidx);
 
     double originalshrinkage = fShrinkage;
     if (maxtreesize==1) {
@@ -2315,7 +2318,9 @@ double RooHybridBDTAutoPdf::EvalLossRooFit() {
   for (unsigned int ievt=0; ievt<fEvts.size(); ++ievt) {
 
     //if (ievt%20!=0) continue;
-    if (ievt%100!=0) continue;
+    //if (ievt%100!=0) continue;
+    
+    if (fPrescaleInit>0 && ievt%fPrescaleInit!=0) continue;
     
     int ithread =  omp_get_thread_num();
     //int ithread =  0;
@@ -3286,10 +3291,13 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForest *forest) {
     double maxscale = 0.;
     step = -fShrinkage*nlldrv/nlldrv2;
     
+    //step = -0./0.;
     
     printf("upnllval = %5f, downnllval = %5f, fNLLVal = %5f, maxscale = %5f, drvstep = %5f, nlldrv = %5f, nlldrv2 = %5f, step = %5f\n",upnllval,downnllval,fNLLVal,maxscale,drvstep,nlldrv,nlldrv2,step);
     
-    if (nlldrv>=0. || nlldrv2<=0. || std::isnan(step) || std::isinf(step)) step = 0.1*fShrinkage;
+    //if (nlldrv>=0. || nlldrv2<=0. || !std::isfinite(step) ) step = 0.1*fShrinkage;
+    if (nlldrv>=0. || nlldrv2<=0. || !std::isnormal(step) || step<(0.1*fShrinkage) ) step = 0.1*fShrinkage;
+    //if (nlldrv>=0. || nlldrv2<=0. || std::isinf(step) || std::isnan(step) ) step = 0.1*fShrinkage;
         
     
     
