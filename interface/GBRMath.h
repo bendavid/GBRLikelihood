@@ -1,7 +1,7 @@
 #ifndef GBRMATH
 #define GBRMATH
 
-#include "vdt/vdtMath.h"
+#include "DataFormats/Math/interface/VDTMath.h"
 
 namespace gbrmath {
  
@@ -9,9 +9,9 @@ namespace gbrmath {
     return vdt::fast_exp(exponent*vdt::fast_log(base));
   }
 
-  inline float fast_powf(float base, float exponent) {
-    return vdt::fast_expf(exponent*vdt::fast_logf(base));
-  }  
+//   inline float fast_powf(float base, float exponent) {
+//     return vdt::fast_expf(exponent*vdt::fast_logf(base));
+//   }  
   
 }
 

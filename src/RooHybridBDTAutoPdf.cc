@@ -65,7 +65,7 @@
 #include "RooCFunction1Binding.h"
 #include "TH1D.h"
 #include "omp.h"
-#include "vdt/vdtMath.h"
+#include "DataFormats/Math/interface/VDTMath.h"
 #include <stdlib.h>
 #include <malloc.h>
 #include "../interface/GBRArrayUtils.h"
@@ -3052,7 +3052,7 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForest *forest) {
         
         //double updval = d2L(iel,jel) + weight*drvi*drvj*invpdfsq;
         
-        #pragma omp atomic update
+        #pragma omp atomic
         d2L(iel,jel) += weight*drvi*drvj*invpdfsq;
         
         //d2Lmaps[ithread][std::pair<int,int>(iel,jel)] += weight*drvi*drvj*invpdfsq;

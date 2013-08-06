@@ -12,7 +12,6 @@
 <use name="histfactory"/>
 <use   name="boost_program_options"/>
 <use   name="boost_filesystem"/>
-<use   name="vdt"/>
 <export>
    <lib name="1"/>
 </export>

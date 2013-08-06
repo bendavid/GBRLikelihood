@@ -8,7 +8,7 @@
 #include "../interface/RooCBExp.h"
 #include "RooRealVar.h"
 #include "RooRealConstant.h"
-#include "vdt/vdtMath.h"
+#include "DataFormats/Math/interface/VDTMath.h"
 #include "../interface/GBRMath.h"
 
 using namespace RooFit;
