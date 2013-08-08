@@ -29,10 +29,10 @@
        HybridGBRForest(int ntargets);
        virtual ~HybridGBRForest();
        
-       int NTargets() const { return fResponses.size(); }
+       int NTargets() const { return fTrees.size(); }
        
-       void GetResponse(const float* vector) const;
-       double GetResponse(int idx) const { return fResponses[idx]; }
+       //void GetResponse(const float* vector) const;
+       //double GetResponse(int idx) const { return fResponses[idx]; }
        
        double GetResponse(const float* vector, int idx) const;
        
@@ -43,21 +43,21 @@
        
     protected:
       std::vector<double> fInitialResponse;
-      mutable std::vector<double> fResponses;
+      //mutable std::vector<double> fResponses;
       std::vector<std::vector<HybridGBRTree> > fTrees;  
       
   };
 
 //_______________________________________________________________________
-inline void HybridGBRForest::GetResponse(const float* vector) const {
-  for (unsigned int itgt=0; itgt<fResponses.size(); ++itgt) {
-    fResponses[itgt] = fInitialResponse[itgt];
-    for (std::vector<HybridGBRTree>::const_iterator it=fTrees[itgt].begin(); it!=fTrees[itgt].end(); ++it) {
-      int termidx = it->TerminalIndex(vector);
-      fResponses[itgt] += it->GetResponse(termidx);
-    }    
-  }
-}
+// inline void HybridGBRForest::GetResponse(const float* vector) const {
+//   for (unsigned int itgt=0; itgt<fResponses.size(); ++itgt) {
+//     fResponses[itgt] = fInitialResponse[itgt];
+//     for (std::vector<HybridGBRTree>::const_iterator it=fTrees[itgt].begin(); it!=fTrees[itgt].end(); ++it) {
+//       int termidx = it->TerminalIndex(vector);
+//       fResponses[itgt] += it->GetResponse(termidx);
+//     }    
+//   }
+// }
 
 //_______________________________________________________________________
 inline double HybridGBRForest::GetResponse(const float* vector, int idx) const {

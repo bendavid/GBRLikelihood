@@ -511,18 +511,26 @@ RooGBRFunction::~RooGBRFunction()
 float RooGBRFunction::GetResponse(int itgt) const {
   
   //printf("RooGBRFunction::GetResponse(%i)\n",itgt);
-  if (isValueDirtyAndClear()) {
-  //if (1) {
-    //printf("recomputing bdt response\n");
-    for (int ivar=0; ivar<_vars.getSize(); ++ivar) {
-      _eval[ivar] = static_cast<RooAbsReal*>(_vars.at(ivar))->getVal();
-      //printf("ivar = %i, var = %5f\n",ivar,_eval[ivar]);
-    }
-    _forest->GetResponse(&_eval[0]);
-  }
+//   if (isValueDirtyAndClear()) {
+//   //if (1) {
+//     //printf("recomputing bdt response\n");
+//     for (int ivar=0; ivar<_vars.getSize(); ++ivar) {
+//       _eval[ivar] = static_cast<RooAbsReal*>(_vars.at(ivar))->getVal();
+//       //printf("ivar = %i, var = %5f\n",ivar,_eval[ivar]);
+//     }
+//     _forest->GetResponse(&_eval[0]);
+//   }
+//   
+//   //printf("response %i = %5f\n",itgt,_forest->GetResponse(itgt));
+//   return _forest->GetResponse(itgt);
   
-  //printf("response %i = %5f\n",itgt,_forest->GetResponse(itgt));
-  return _forest->GetResponse(itgt);
+  
+  for (int ivar=0; ivar<_vars.getSize(); ++ivar) {
+    _eval[ivar] = static_cast<RooAbsReal*>(_vars.at(ivar))->getVal();
+    //printf("ivar = %i, var = %5f\n",ivar,_eval[ivar]);
+  }  
+  return _forest->GetResponse(&_eval[0],itgt);
+
   
 }
 

@@ -7,7 +7,7 @@
 HybridGBRForest::HybridGBRForest(int ntargets)
 {
   fInitialResponse.resize(ntargets,0.);
-  fResponses.resize(ntargets);
+//  fResponses.resize(ntargets);
   fTrees.resize(ntargets);
 }
 
