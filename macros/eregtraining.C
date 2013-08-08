@@ -79,7 +79,7 @@ void eregtraining(bool dobarrel, bool doele) {
   //candidate to set fixed alpha values (0.9,3.8)
   //TString dirname = TString::Format("/afs/cern.ch/work/b/bendavid/bare/eregtesteleJul30_sig5_01_alphafloat5_%i/",int(minevents)); 
   
-  TString dirname = "/afs/cern.ch/work/b/bendavid/bare/eregRC2Aug6/"; 
+  TString dirname = "/afs/cern.ch/work/b/bendavid/bare/eregRC4Aug6/"; 
   gSystem->mkdir(dirname,true);
   gSystem->cd(dirname);  
   
@@ -143,8 +143,14 @@ void eregtraining(bool dobarrel, bool doele) {
   
   RooArgList condvars(vars);
   
-  RooRealVar *tgtvar = new RooRealVar("tgtvar","ph.scrawe/ph.gene",1.);
-  if (!dobarrel) tgtvar->SetTitle("(ph.scrawe + ph.scpse)/ph.gene");
+//   RooRealVar *tgtvar = new RooRealVar("tgtvar","ph.scrawe/ph.gene",1.);
+//   if (!dobarrel) tgtvar->SetTitle("(ph.scrawe + ph.scpse)/ph.gene");
+  
+  RooRealVar *tgtvar = new RooRealVar("tgtvar","ph.gene/ph.scrawe",1.);
+  if (!dobarrel) tgtvar->SetTitle("ph.gene/(ph.scrawe + ph.scpse)");  
+  
+  //tgtvar->setRange(0.,5.);
+  
   vars.addOwned(*tgtvar);
 
 
@@ -212,6 +218,7 @@ void eregtraining(bool dobarrel, bool doele) {
   TCut selweight = "xsecweight(procidx)";
   TCut prescale10 = "(evt%10==0)";
   TCut prescale25 = "(evt%25==0)";
+  TCut prescale50 = "(evt%50==0)";
   TCut prescale100 = "(evt%100==0)";  
   TCut prescale1000 = "(evt%1000==0)";  
   TCut evenevents = "(evt%2==0)";
@@ -243,7 +250,7 @@ void eregtraining(bool dobarrel, bool doele) {
 //   weightvar.SetTitle(prescale10*selcut);
 //   RooDataSet *hdatasigsmall = RooTreeConvert::CreateDataSet("hdatasigsmall",dtreesig,vars,weightvar);   
   
-  RooRealVar sigwidthtvar("sigwidthtvar","",0.008);
+  RooRealVar sigwidthtvar("sigwidthtvar","",0.01);
   sigwidthtvar.setConstant(false);
   
   RooRealVar sigmeantvar("sigmeantvar","",1.);
@@ -252,13 +259,13 @@ void eregtraining(bool dobarrel, bool doele) {
   RooRealVar sigalphavar("sigalphavar","",1.);
   sigalphavar.setConstant(false);   
   
-  RooRealVar signvar("signvar","",1.);
+  RooRealVar signvar("signvar","",2.);
   signvar.setConstant(false);     
 
   RooRealVar sigalpha2var("sigalpha2var","",1.);
   sigalpha2var.setConstant(false);   
   
-  RooRealVar sign2var("sign2var","",1.);
+  RooRealVar sign2var("sign2var","",2.);
   sign2var.setConstant(false);     
   
   
@@ -280,31 +287,39 @@ void eregtraining(bool dobarrel, bool doele) {
   tgts.add(sign2t);
 
   RooRealConstraint sigwidthlim("sigwidthlim","",sigwidtht,0.0002,0.5);
-  RooRealConstraint sigmeanlim("sigmeanlim","",sigmeant,0.2,2.0); 
+  RooRealConstraint sigmeanlim("sigmeanlim","",sigmeant,0.2,2.0);
+  //RooRealConstraint sigmeanlim("sigmeanlim","",sigmeant,-2.0,-0.2); 
   
-  RooRealConstraint signlim("signlim","",signt,0.,110.); 
-  RooRealConstraint sigalphalim("sigalphalim","",sigalpha,0.,5.);
+  RooRealConstraint signlim("signlim","",signt,1.01,110.); 
+  RooRealConstraint sigalphalim("sigalphalim","",sigalpha,0.,6.0);
 
-  RooRealConstraint sign2lim("sign2lim","",sign2t,0.,30.); 
-  RooRealConstraint sigalpha2lim("sigalpha2lim","",sigalpha2,0.,8.0);  
+  RooRealConstraint sign2lim("sign2lim","",sign2t,1.01,110.); 
+  RooRealConstraint sigalpha2lim("sigalpha2lim","",sigalpha2,0.,6.0);  
   
   RooLinearVar tgtscaled("tgtscaled","",*tgtvar,sigmeanlim,RooConst(0.));
   
   RooDoubleCBFast sigpdf("sigpdf","",tgtscaled,RooConst(1.),sigwidthlim,sigalphalim,signlim,sigalpha2lim,sign2lim);
+  //RooDoubleCBFast sigpdf("sigpdf","",tgtscaled,RooConst(1.),sigwidthlim,RooConst(2.0),signlim,RooConst(1.0),sign2lim);
+  
+  //RooCBExp sigpdf("sigpdf","",tgtscaled,RooConst(-1.),sigwidthlim,sigalpha2lim,sign2lim,sigalphalim);
+  
+  //RooDoubleCBFast sigpdf("sigpdf","",tgtscaled,RooConst(1.),sigwidthlim,RooConst(100.),RooConst(100.),sigalpha2lim,sign2lim);
+  //RooDoubleCBFast sigpdf("sigpdf","",tgtscaled,RooConst(1.),sigwidthlim,sigalphalim,signlim,RooConst(3.),sign2lim);
+  //RooCBShape sigpdf("sigpdf","",tgtscaled,RooConst(1.),sigwidthlim,sigalphalim,signlim);
   
   RooConstVar etermconst("etermconst","",0.);  
   //RooFormulaVar etermconst("etermconst","","1000.*(@0-1.)*(@0-1.)",RooArgList(tgtscaled));
-  
+   
   RooRealVar r("r","",1.);
   r.setConstant();
 
   std::vector<RooAbsReal*> vpdf;
   vpdf.push_back(&sigpdf);  
 
-  double minweight;
-  if (dobarrel) minweight = 200.;
-  else minweight = 1000.;
-  
+  double minweight = 200.;
+//   if (dobarrel) minweight = 200.;
+//   else minweight = 200.;
+   
   std::vector<double> minweights;
   minweights.push_back(minweight);
   
@@ -319,7 +334,7 @@ void eregtraining(bool dobarrel, bool doele) {
     RooHybridBDTAutoPdf bdtpdfdiff("bdtpdfdiff","",func,tgts,etermconst,r,vdata,vpdf);
     bdtpdfdiff.SetMinCutSignificance(5.);
     bdtpdfdiff.SetPrescaleInit(100);
-    //bdtpdfdiff.SetPrescaleInit(10);
+   // bdtpdfdiff.SetPrescaleInit(10);
     //bdtpdfdiff.SetMaxNSpurious(300.);
     //bdtpdfdiff.SetMaxNSpurious(2400.);
     bdtpdfdiff.SetShrinkage(0.1);

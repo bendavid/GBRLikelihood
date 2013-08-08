@@ -127,7 +127,7 @@ void eregtest() {
   gSystem->mkdir(dirname,true);
   gSystem->cd(dirname);    
   
-  TFile *fws = TFile::Open("/afs/cern.ch/work/b/bendavid/bare/eregtesteleAug5_sig5_01_alphafloat_200/wereg.root"); 
+  TFile *fws = TFile::Open("/afs/cern.ch/work/b/bendavid/bare/eregRC3Aug6/wereg_ph_eb.root"); 
   RooWorkspace *ws = (RooWorkspace*)fws->Get("wereg");
   
   RooGBRFunction *func = static_cast<RooGBRFunction*>(ws->arg("func"));
@@ -142,21 +142,25 @@ void eregtest() {
   RooRealVar weightvar("weightvar","",1.);
 
   //TFile *fdin = TFile::Open("/home/mingyang/cms/hist/hgg-2013Moriond/merged/hgg-2013Moriond_s12-diphoj-3-v7a_noskim.root");
-  TFile *fdin = TFile::Open("root://eoscms.cern.ch//eos/cms/store/cmst3/user/bendavid/trainingtreesJul1/hgg-2013Final8TeV_s12-zllm50-v7n_noskim.root");
-  TDirectory *ddir = (TDirectory*)fdin->FindObjectAny("PhotonTreeWriterSingleInvert");
+  //TFile *fdin = TFile::Open("root://eoscms.cern.ch//eos/cms/store/cmst3/user/bendavid/trainingtreesJul1/hgg-2013Final8TeV_s12-zllm50-v7n_noskim.root");
+  TFile *fdin = TFile::Open("root://eoscms.cern.ch///eos/cms/store/cmst3/user/bendavid/idTreesAug1/hgg-2013Final8TeV_ID_s12-h124gg-gf-v7n_noskim.root");
+  //TFile *fdin = TFile::Open("root://eoscms.cern.ch//eos/cms/store/cmst3/user/bendavid/regTreesAug1/hgg-2013Final8TeV_reg_s12-zllm50-v7n_noskim.root");
+  //TDirectory *ddir = (TDirectory*)fdin->FindObjectAny("PhotonTreeWriterSingleInvert");
+  TDirectory *ddir = (TDirectory*)fdin->FindObjectAny("PhotonTreeWriterPreselNoSmear");
   TTree *dtree = (TTree*)ddir->Get("hPhotonTreeSingle");    
   
 /*  TFile *fdinsig = TFile::Open("/home/mingyang/cms/hist/hgg-2013Moriond/merged/hgg-2013Moriond_s12-h125gg-gf-v7a_noskim.root");
   TDirectory *ddirsig = (TDirectory*)fdinsig->FindObjectAny("PhotonTreeWriterPreselNoSmear");
   TTree *dtreesig = (TTree*)ddirsig->Get("hPhotonTreeSingle"); */     
   
-  TCut selcut = "ph.pt>25. && ph.isbarrel && ph.ispromptgen"; 
+  TCut selcut = "ph.genpt>16. && ph.isbarrel && ph.ispromptgen"; 
 
 //  TCut selcut = "ph.pt>25. && ph.isbarrel && ph.ispromptgen && abs(ph.sceta)<1.0"; 
   //TCut selcut = "ph.pt>25. && ph.isbarrel && (ph.scrawe/ph.gene)>0. && (ph.scrawe/ph.gene)<2. && ph.ispromptgen";
   //TCut selcut = "ph.pt>25. && ph.isbarrel && (ph.gene/ph.scrawe)>0. && (ph.gene/ph.scrawe)<2.";
   TCut selweight = "xsecweight(procidx)*puweight(numPU,procidx)";
   TCut prescale10 = "(evt%10==0)";
+  TCut prescale10alt = "(evt%10==1)";
   TCut prescale25 = "(evt%25==0)";
   TCut prescale100 = "(evt%100==0)";  
   TCut prescale1000 = "(evt%1000==0)";  
@@ -167,10 +171,12 @@ void eregtest() {
   TCut prescale50alt = "(evt%50==1)";
   //TCut oddevents = prescale100;
   
-  weightvar.SetTitle(prescale100alt*selcut);
+  weightvar.SetTitle(selcut);
+  //weightvar.SetTitle(prescale100alt*selcut);
   RooDataSet *hdata = RooTreeConvert::CreateDataSet("hdata",dtree,vars,weightvar);   
 
-  weightvar.SetTitle(prescale1000alt*selcut);
+  weightvar.SetTitle(prescale10alt*selcut);
+  //weightvar.SetTitle(prescale1000alt*selcut);
   RooDataSet *hdatasmall = RooTreeConvert::CreateDataSet("hdatasmall",dtree,vars,weightvar);     
   
     
@@ -193,7 +199,7 @@ void eregtest() {
   RooAbsReal *alphalim = ws->function("sigalphalim");
   RooAbsReal *alpha2lim = ws->function("sigalpha2lim");  
 
-  RooFormulaVar ecor("ecor","","@0*@1",RooArgList(*tgtvar,*sigmeanlim));
+  RooFormulaVar ecor("ecor","","1./(@0*@1)",RooArgList(*tgtvar,*sigmeanlim));
   //RooFormulaVar ecor("ecor","","@1/@0",RooArgList(*tgtvar,*sigmeanlim));
   //RooFormulaVar ecor("ecor","","@0/@1",RooArgList(*tgtvar,*sigmeanlim));
   //RooFormulaVar ecor("ecor","","@0",RooArgList(*tgtvar));
@@ -201,10 +207,10 @@ void eregtest() {
   ecorvar->setRange(0.,2.);
   ecorvar->setBins(800);
   
-//   RooFormulaVar raw("raw","","1./@0",RooArgList(*tgtvar));
-//   RooRealVar *rawvar = (RooRealVar*)hdata->addColumn(raw);
-//   rawvar->setRange(0.,2.);
-//   rawvar->setBins(800);
+   RooFormulaVar raw("raw","","1./@0",RooArgList(*tgtvar));
+   RooRealVar *rawvar = (RooRealVar*)hdata->addColumn(raw);
+   rawvar->setRange(0.,2.);
+   rawvar->setBins(800);
 
 /*  RooFormulaVar eraw("eraw","","@0",RooArgList(*tgtvar));
   RooRealVar *erawvar = (RooRealVar*)hdatasig->addColumn(eraw);
@@ -222,12 +228,14 @@ void eregtest() {
   
   
   TCanvas *craw = new TCanvas;
-  RooPlot *plot = tgtvar->frame(0.6,1.2,100);
+  //RooPlot *plot = tgtvar->frame(0.6,1.2,100);
+  RooPlot *plot = tgtvar->frame(0.6,2.0,100);
   hdata->plotOn(plot);
   sigpdf->plotOn(plot,ProjWData(*hdatasmall));
   plot->Draw();
   craw->SaveAs("RawE.eps");
   craw->SetLogy();
+  plot->SetMinimum(0.1);
   craw->SaveAs("RawElog.eps");
   
 /*  new TCanvas;
@@ -250,33 +258,35 @@ void eregtest() {
   cwidth->SaveAs("width.eps");
   
   TCanvas *cn = new TCanvas;
-  RooPlot *plotn = nvar->frame(0.,101.,200);
+  RooPlot *plotn = nvar->frame(0.,111.,200);
   hdataclone->plotOn(plotn);
   plotn->Draw();
   cn->SaveAs("n.eps");
 
   TCanvas *cn2 = new TCanvas;
-  RooPlot *plotn2 = n2var->frame(0.,31.,100);
+  RooPlot *plotn2 = n2var->frame(0.,111.,100);
   hdataclone->plotOn(plotn2);
   plotn2->Draw();
   cn2->SaveAs("n2.eps");
   
   
   TCanvas *calpha = new TCanvas;
-  RooPlot *plotalpha = alphavar->frame(0.,6.,100);
+  RooPlot *plotalpha = alphavar->frame(0.,6.,200);
   hdataclone->plotOn(plotalpha);
   plotalpha->Draw();    
   calpha->SaveAs("alpha.eps");
+  calpha->SetLogy();
+  plotalpha->SetMinimum(0.1);
   
   TCanvas *calpha2 = new TCanvas;
-  RooPlot *plotalpha2 = alpha2var->frame(0.,8.,100);
+  RooPlot *plotalpha2 = alpha2var->frame(0.,6.,200);
   hdataclone->plotOn(plotalpha2);
   plotalpha2->Draw();      
   calpha2->SaveAs("alpha2.eps");
   
   //TH1 *heold = hdatasigtest->createHistogram("heold",testvar);
-  TH1 *heraw = hdata->createHistogram("heraw",*tgtvar,Binning(800,0.,2.));
-  //TH1 *heraw = hdata->createHistogram("hraw",*rawvar,Binning(800,0.,2.));
+  //TH1 *heraw = hdata->createHistogram("heraw",*tgtvar,Binning(800,0.,2.));
+  TH1 *heraw = hdata->createHistogram("hraw",*rawvar,Binning(800,0.,2.));
   TH1 *hecor = hdata->createHistogram("hecor",*ecorvar);
   
   
