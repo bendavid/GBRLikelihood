@@ -72,14 +72,14 @@ void initweights(TChain *chain, float *xsecs, float lumi) {
   
 }
 
-void eregtraining(bool dobarrel, bool doele) {
+void eregtraining_fixalpha(bool dobarrel, bool doele) {
    
 //   gSystem->Setenv("OMP_WAIT_POLICY","PASSIVE");
   
   //candidate to set fixed alpha values (0.9,3.8)
   //TString dirname = TString::Format("/afs/cern.ch/work/b/bendavid/bare/eregtesteleJul30_sig5_01_alphafloat5_%i/",int(minevents)); 
   
-  TString dirname = "/afs/cern.ch/work/b/bendavid/bare/eregRC4Aug6/"; 
+  TString dirname = "/afs/cern.ch/work/b/bendavid/bare/eregAug10RCalphafix/"; 
   gSystem->mkdir(dirname,true);
   gSystem->cd(dirname);  
   
@@ -271,38 +271,28 @@ void eregtraining(bool dobarrel, bool doele) {
   
    
   RooArgList tgts;
-  RooGBRFunction func("func","",condvars,6);
+  RooGBRFunction func("func","",condvars,4);
   RooGBRTarget sigwidtht("sigwidtht","",func,0,sigwidthtvar);
   RooGBRTarget sigmeant("sigmeant","",func,1,sigmeantvar);
-  RooGBRTarget sigalpha("sigalpha","",func,2,sigalphavar);
-  RooGBRTarget signt("signt","",func,3,signvar);
-  RooGBRTarget sigalpha2("sigalpha2","",func,4,sigalpha2var);
-  RooGBRTarget sign2t("sign2t","",func,5,sign2var);
+  RooGBRTarget signt("signt","",func,2,signvar);
+  RooGBRTarget sign2t("sign2t","",func,3,sign2var);
   
   tgts.add(sigwidtht);
   tgts.add(sigmeant);
-  tgts.add(sigalpha);
   tgts.add(signt);
-  tgts.add(sigalpha2);
   tgts.add(sign2t);
-
-  double lowboundalpha;
-  if (dobarrel) lowboundalpha = 0.;
-  else lowboundalpha = 0.05;
   
   RooRealConstraint sigwidthlim("sigwidthlim","",sigwidtht,0.0002,0.5);
   RooRealConstraint sigmeanlim("sigmeanlim","",sigmeant,0.2,2.0);
   //RooRealConstraint sigmeanlim("sigmeanlim","",sigmeant,-2.0,-0.2); 
   
   RooRealConstraint signlim("signlim","",signt,1.01,110.); 
-  RooRealConstraint sigalphalim("sigalphalim","",sigalpha,lowboundalpha,6.0);
 
   RooRealConstraint sign2lim("sign2lim","",sign2t,1.01,110.); 
-  RooRealConstraint sigalpha2lim("sigalpha2lim","",sigalpha2,lowboundalpha,6.0);  
   
   RooLinearVar tgtscaled("tgtscaled","",*tgtvar,sigmeanlim,RooConst(0.));
   
-  RooDoubleCBFast sigpdf("sigpdf","",tgtscaled,RooConst(1.),sigwidthlim,sigalphalim,signlim,sigalpha2lim,sign2lim);
+  RooDoubleCBFast sigpdf("sigpdf","",tgtscaled,RooConst(1.),sigwidthlim,RooConst(2.0),signlim,RooConst(1.0),sign2lim);
   //RooDoubleCBFast sigpdf("sigpdf","",tgtscaled,RooConst(1.),sigwidthlim,RooConst(2.0),signlim,RooConst(1.0),sign2lim);
   
   //RooCBExp sigpdf("sigpdf","",tgtscaled,RooConst(-1.),sigwidthlim,sigalpha2lim,sign2lim,sigalphalim);
