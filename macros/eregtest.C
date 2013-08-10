@@ -121,13 +121,27 @@ Double_t effSigma(TH1 * hist)
   
 }
 
-void eregtest() {
+void eregtest(bool dobarrel, bool doele) {
   
   TString dirname = "/afs/cern.ch/work/b/bendavid/bare/eregtestoutAug2b/"; 
   gSystem->mkdir(dirname,true);
   gSystem->cd(dirname);    
   
-  TFile *fws = TFile::Open("/afs/cern.ch/work/b/bendavid/bare/eregRC3Aug6/wereg_ph_eb.root"); 
+  
+  
+  TString fname;
+  if (doele && dobarrel) 
+    fname = "wereg_ele_eb.root";
+  else if (doele && !dobarrel) 
+    fname = "wereg_ele_ee.root";
+  else if (!doele && dobarrel) 
+    fname = "wereg_ph_eb.root";
+  else if (!doele && !dobarrel) 
+    fname = "wereg_ph_ee.root";
+  
+  TString infile = TString::Format("/afs/cern.ch/work/b/bendavid/bare/eregRC4Aug6alt2/%s",fname.Data());
+  
+  TFile *fws = TFile::Open(infile); 
   RooWorkspace *ws = (RooWorkspace*)fws->Get("wereg");
   
   RooGBRFunction *func = static_cast<RooGBRFunction*>(ws->arg("func"));
@@ -141,20 +155,38 @@ void eregtest() {
   
   RooRealVar weightvar("weightvar","",1.);
 
-  //TFile *fdin = TFile::Open("/home/mingyang/cms/hist/hgg-2013Moriond/merged/hgg-2013Moriond_s12-diphoj-3-v7a_noskim.root");
-  //TFile *fdin = TFile::Open("root://eoscms.cern.ch//eos/cms/store/cmst3/user/bendavid/trainingtreesJul1/hgg-2013Final8TeV_s12-zllm50-v7n_noskim.root");
-  TFile *fdin = TFile::Open("root://eoscms.cern.ch///eos/cms/store/cmst3/user/bendavid/idTreesAug1/hgg-2013Final8TeV_ID_s12-h124gg-gf-v7n_noskim.root");
-  //TFile *fdin = TFile::Open("root://eoscms.cern.ch//eos/cms/store/cmst3/user/bendavid/regTreesAug1/hgg-2013Final8TeV_reg_s12-zllm50-v7n_noskim.root");
-  //TDirectory *ddir = (TDirectory*)fdin->FindObjectAny("PhotonTreeWriterSingleInvert");
-  TDirectory *ddir = (TDirectory*)fdin->FindObjectAny("PhotonTreeWriterPreselNoSmear");
-  TTree *dtree = (TTree*)ddir->Get("hPhotonTreeSingle");    
+  TTree *dtree;
+  
+  if (doele) {
+    TFile *fdin = TFile::Open("root://eoscms.cern.ch//eos/cms/store/cmst3/user/bendavid/regTreesAug1/hgg-2013Final8TeV_reg_s12-zllm50-v7n_noskim.root");
+    TDirectory *ddir = (TDirectory*)fdin->FindObjectAny("PhotonTreeWriterSingleInvert");
+    dtree = (TTree*)ddir->Get("hPhotonTreeSingle");       
+  }
+  else {
+    TFile *fdin = TFile::Open("root://eoscms.cern.ch///eos/cms/store/cmst3/user/bendavid/idTreesAug1/hgg-2013Final8TeV_ID_s12-h124gg-gf-v7n_noskim.root");
+    TDirectory *ddir = (TDirectory*)fdin->FindObjectAny("PhotonTreeWriterPreselNoSmear");
+    dtree = (TTree*)ddir->Get("hPhotonTreeSingle");       
+  }
+  
+  
+//   //TFile *fdin = TFile::Open("/home/mingyang/cms/hist/hgg-2013Moriond/merged/hgg-2013Moriond_s12-diphoj-3-v7a_noskim.root");
+//   //TFile *fdin = TFile::Open("root://eoscms.cern.ch//eos/cms/store/cmst3/user/bendavid/trainingtreesJul1/hgg-2013Final8TeV_s12-zllm50-v7n_noskim.root");
+//   TFile *fdin = TFile::Open("root://eoscms.cern.ch///eos/cms/store/cmst3/user/bendavid/idTreesAug1/hgg-2013Final8TeV_ID_s12-h124gg-gf-v7n_noskim.root");
+//   //TFile *fdin = TFile::Open("root://eoscms.cern.ch//eos/cms/store/cmst3/user/bendavid/regTreesAug1/hgg-2013Final8TeV_reg_s12-zllm50-v7n_noskim.root");
+//   //TDirectory *ddir = (TDirectory*)fdin->FindObjectAny("PhotonTreeWriterSingleInvert");
+//   TDirectory *ddir = (TDirectory*)fdin->FindObjectAny("PhotonTreeWriterPreselNoSmear");
+//   TTree *dtree = (TTree*)ddir->Get("hPhotonTreeSingle");    
   
 /*  TFile *fdinsig = TFile::Open("/home/mingyang/cms/hist/hgg-2013Moriond/merged/hgg-2013Moriond_s12-h125gg-gf-v7a_noskim.root");
   TDirectory *ddirsig = (TDirectory*)fdinsig->FindObjectAny("PhotonTreeWriterPreselNoSmear");
   TTree *dtreesig = (TTree*)ddirsig->Get("hPhotonTreeSingle"); */     
   
-  TCut selcut = "ph.genpt>16. && ph.isbarrel && ph.ispromptgen"; 
-
+  TCut selcut;
+  if (dobarrel) 
+    selcut = "ph.genpt>25. && ph.isbarrel && ph.ispromptgen"; 
+  else
+    selcut = "ph.genpt>25. && !ph.isbarrel && ph.ispromptgen"; 
+  
 //  TCut selcut = "ph.pt>25. && ph.isbarrel && ph.ispromptgen && abs(ph.sceta)<1.0"; 
   //TCut selcut = "ph.pt>25. && ph.isbarrel && (ph.scrawe/ph.gene)>0. && (ph.scrawe/ph.gene)<2. && ph.ispromptgen";
   //TCut selcut = "ph.pt>25. && ph.isbarrel && (ph.gene/ph.scrawe)>0. && (ph.gene/ph.scrawe)<2.";
@@ -171,12 +203,18 @@ void eregtest() {
   TCut prescale50alt = "(evt%50==1)";
   //TCut oddevents = prescale100;
   
-  weightvar.SetTitle(selcut);
-  //weightvar.SetTitle(prescale100alt*selcut);
+  if (doele) 
+    weightvar.SetTitle(prescale100alt*selcut);
+  else
+    weightvar.SetTitle(selcut);
+  
   RooDataSet *hdata = RooTreeConvert::CreateDataSet("hdata",dtree,vars,weightvar);   
 
-  weightvar.SetTitle(prescale10alt*selcut);
-  //weightvar.SetTitle(prescale1000alt*selcut);
+  if (doele) 
+    weightvar.SetTitle(prescale1000alt*selcut);
+  else
+    weightvar.SetTitle(prescale10alt*selcut);
+  
   RooDataSet *hdatasmall = RooTreeConvert::CreateDataSet("hdatasmall",dtree,vars,weightvar);     
   
     
@@ -191,6 +229,8 @@ void eregtest() {
   
   
   RooAbsPdf *sigpdf = ws->pdf("sigpdf");
+  
+  RooRealVar *scetavar = ws->var("var_1");
   
   RooAbsReal *sigmeanlim = ws->function("sigmeanlim");
   RooAbsReal *sigwidthlim = ws->function("sigwidthlim");
@@ -225,6 +265,8 @@ void eregtest() {
   
   RooRealVar *alphavar = (RooRealVar*)hdataclone->addColumn(*alphalim);
   RooRealVar *alpha2var = (RooRealVar*)hdataclone->addColumn(*alpha2lim);
+  
+ // hdataclone = (RooDataSet*)hdataclone->reduce("sigwidthlim>0.017");
   
   
   TCanvas *craw = new TCanvas;
@@ -283,6 +325,12 @@ void eregtest() {
   hdataclone->plotOn(plotalpha2);
   plotalpha2->Draw();      
   calpha2->SaveAs("alpha2.eps");
+  
+  TCanvas *ceta = new TCanvas;
+  RooPlot *ploteta = scetavar->frame(-2.6,2.6,200);
+  hdataclone->plotOn(ploteta);
+  ploteta->Draw();      
+  ceta->SaveAs("eta.eps");  
   
   //TH1 *heold = hdatasigtest->createHistogram("heold",testvar);
   //TH1 *heraw = hdata->createHistogram("heraw",*tgtvar,Binning(800,0.,2.));
