@@ -196,7 +196,7 @@ private:
 class RooGBRFunction : public RooAbsReal {
  
 public:
-  RooGBRFunction() {}
+  RooGBRFunction() : _forest(0) {}
   RooGBRFunction(const char *name, const char *title, const RooArgList &vars, int ntargets);
   RooGBRFunction(const RooGBRFunction& other, const char* name=0);
   virtual ~RooGBRFunction();

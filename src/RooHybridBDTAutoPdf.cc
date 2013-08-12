@@ -559,7 +559,7 @@ RooGBRFunction::RooGBRFunction(const RooGBRFunction& other, const char* name) :
 //_____________________________________________________________________________  
 RooGBRFunction::~RooGBRFunction()
 {
-  delete _forest;
+  if (_forest) delete _forest;
 }
   
 //_____________________________________________________________________________  
