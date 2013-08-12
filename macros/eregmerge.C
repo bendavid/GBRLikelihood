@@ -68,7 +68,7 @@ RooAbsArg *cloneRecursiveRename(RooAbsArg *arg, const char *postfix) {
 
 void eregmerge(bool doele) {
   
-  TString dirname = "/afs/cern.ch/work/b/bendavid/bare/eregMergedAug11/"; 
+  TString dirname = "/afs/cern.ch/user/b/bendavid/CMSSWhgg/CMSSW_5_3_11_patch5/src/HiggsAnalysis/GBRLikelihoodEGTools/data/"; 
   gSystem->mkdir(dirname,true);
   gSystem->cd(dirname);    
   
@@ -145,5 +145,14 @@ void eregmerge(bool doele) {
   for (int ivar=0; ivar<funcee->Vars().getSize(); ++ivar) {
     printf("%i: %s, %s\n",ivar,funcee->Vars().at(ivar)->GetName(),funcee->Vars().at(ivar)->GetTitle());
   }
+  
+  TString outnameforest;
+  if (doele) outnameforest = "regweights_v4_forest_ele.root";
+  else outnameforest = "regweights_v4_forest_ph.root";  
+  
+  TFile *fforest = new TFile(outnameforest,"RECREATE");
+  fforest->WriteObject(funceb->Forest(),"EGRegressionForest_EB");
+  fforest->WriteObject(funcee->Forest(),"EGRegressionForest_EE");
+  fforest->Close();
   
 }
