@@ -2488,6 +2488,8 @@ double RooHybridBDTAutoPdf::EvalLoss(HybridGBRForest *forest, double lambda, con
     double pdfval = static_cast<RooAbsReal*>(fStaticPdfsClones[ithread].at(evcls))->getValV(&fParmSetClones[ithread]);
     fEvts[ievt]->SetPdfVal(pdfval);
     
+    //if (!std::isnormal(pdfval)) fStaticPdfsClones[ithread].at(evcls)->Print("V");
+    
     //nllval += -weight*log(pdfval);
     //nllvals[ithread] += -weight*vdt::fast_logf(pdfval);
     nllvals[ithread] += -weight*log(pdfval); 
