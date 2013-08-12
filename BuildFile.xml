@@ -1,7 +1,5 @@
-<!-- <flags   CXXFLAGS="-O3 -ftree-loop-linear -floop-interchange -mmmx  -msse  -msse2 -msse3 -mssse3 -msse4.1 -msse4.2 -msse4 -fopenmp -march=corei7"/> -->
 
 <flags CXXFLAGS="-O3 -ftree-loop-linear -floop-interchange -ffast-math -march=native -fopenmp -std=gnu++0x"/>
-
 <use name="root"/>
 <use name="rootgraphics"/>
 <use name="rootmath"/>
