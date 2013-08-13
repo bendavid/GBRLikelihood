@@ -1,4 +1,3 @@
-
 #ifndef EGAMMAOBJECTS_HybridGBREvent
 #define EGAMMAOBJECTS_HybridGBREvent
 
