@@ -58,19 +58,32 @@ using namespace RooFit;
    if(t>-alpha1 && t<alpha2){
      val = vdt::fast_exp(-0.5*t*t);
    }else if(t<=-alpha1){
-     double n1invalpha1 = n1*vdt::fast_inv(fabs(alpha1));
-     double A1 = gbrmath::fast_pow(n1invalpha1,n1)*vdt::fast_exp(-alpha1*alpha1/2.);
-     double B1 = n1invalpha1-fabs(alpha1);
-     val = A1*gbrmath::fast_pow(B1-t,-n1);
+     double alpha1invn1 = alpha1*vdt::fast_inv(n1);
+     val = vdt::fast_exp(-0.5*alpha1*alpha1)*gbrmath::fast_pow(1. - alpha1invn1*(alpha1+t), -n1);
+     
+//      double n1invalpha1 = n1*vdt::fast_inv(fabs(alpha1));
+//      double A1 = gbrmath::fast_pow(n1invalpha1,n1)*vdt::fast_exp(-alpha1*alpha1/2.);
+//      double B1 = n1invalpha1-fabs(alpha1);
+//      val = A1*gbrmath::fast_pow(B1-t,-n1);
    }else if(t>=alpha2){
-     double n2invalpha2 = n1*vdt::fast_inv(fabs(alpha2));
-     double A2 = gbrmath::fast_pow(n2invalpha2,n2)*vdt::fast_exp(-alpha2*alpha2/2.);
-     double B2 = n2invalpha2-fabs(alpha2);
-     val = A2*gbrmath::fast_pow(B2+t,-n2);
+     double alpha2invn2 = alpha2*vdt::fast_inv(n2);
+     val = vdt::fast_exp(-0.5*alpha2*alpha2)*gbrmath::fast_pow(1. - alpha2invn2*(alpha2-t), -n2);     
+     
+//      double n2invalpha2 = n2*vdt::fast_inv(fabs(alpha2));
+//      double A2 = gbrmath::fast_pow(n2invalpha2,n2)*vdt::fast_exp(-alpha2*alpha2/2.);
+//      double B2 = n2invalpha2-fabs(alpha2);
+//      val = A2*gbrmath::fast_pow(B2+t,-n2);
    }//else{
      //cout << "ERROR evaluating range..." << endl;
+     
+   if (!std::isnormal(val)) {
+     printf("bad val: x = %5f, t = %5f, mean = %5f, sigma = %5f, alpha1 = %5f, n1 = %5f, alpha2 = %5f, n2 = %5f\n",double(x), t, double(mean),double(width),double(alpha1),double(n1),double(alpha2), double(n2));
+     printf("val = %5f\n",val);
+   }
+     
    return val;
    //return std::max(double(std::numeric_limits<float>::min()),val);
+   //return std::max(1e-3,val);
    //}
     
  } 
@@ -88,48 +101,114 @@ using namespace RooFit;
    double central=0;
    double left=0;
    double right=0;
+   
+   double xmin = x.min(rangeName);
+   double xmax = x.max(rangeName);
+   
+   //printf("xmin = %5e, xmax = %5e\n",xmin,xmax);
+   
+   //bool isfullrange = xmin<=-RooNumber::infinity() && xmax>=RooNumber::infinity();
  
    static const double root2 = sqrt(2) ;
    static const double rootPiBy2 = sqrt(atan2(0.0,-1.0)/2.0);
    double xscale = root2*width;
  
-   double n1invalpha1 = n1*vdt::fast_inv(fabs(alpha1));
-   double n2invalpha2 = n1*vdt::fast_inv(fabs(alpha2));
    double invwidth = vdt::fast_inv(width);
    
+   double tmin = (xmin-mean)*invwidth;
+   double tmax = (xmax-mean)*invwidth;
+   
+   bool isfullrange = (tmin<-1000. && tmax>1000.);
+   
    //compute gaussian contribution
-   double central_low =std::max(x.min(rangeName),mean - alpha1*width );
-   double central_high=std::min(x.max(rangeName),mean + alpha2*width );
+   double central_low =std::max(xmin,mean - alpha1*width );
+   double central_high=std::min(xmax,mean + alpha2*width );
    if(central_low < central_high) // is the gaussian part in range?
      central = rootPiBy2*width*(TMath::Erf((central_high-mean)/xscale)-TMath::Erf((central_low-mean)/xscale));
  
    //compute left tail;
-   double A1 = gbrmath::fast_pow(n1invalpha1,n1)*vdt::fast_exp(-0.5*alpha1*alpha1);
-   double B1 = n1invalpha1-fabs(alpha1);
- 
-   double left_low=x.min(rangeName);
-   double left_high=std::min(x.max(rangeName),mean - alpha1*width);
-   if(left_low < left_high){ //is the left tail in range?
-     if(fabs(n1-1.0)>1.e-5)
-       left = A1*vdt::fast_inv(-n1+1.0)*width*(gbrmath::fast_pow(B1-(left_low-mean)*invwidth,-n1+1.)-gbrmath::fast_pow(B1-(left_high-mean)*invwidth,-n1+1.));
-     else
-       left = A1*width*(vdt::fast_log(B1-(left_low-mean)*invwidth) - vdt::fast_log(B1-(left_high-mean)*invwidth) );
+   if (isfullrange  && (n1-1.0)>1.e-5) {
+    left = width*vdt::fast_exp(-0.5*alpha1*alpha1)*n1*vdt::fast_inv(alpha1*(n1-1.)); 
+   }
+   else {
+  
+    double left_low=xmin;
+    double left_high=std::min(xmax,mean - alpha1*width);
+    double thigh = (left_high-mean)*invwidth;
+    
+    if(left_low < left_high){ //is the left tail in range?
+     double n1invalpha1 = n1*vdt::fast_inv(fabs(alpha1));
+      if(fabs(n1-1.0)>1.e-5) {
+	double invn1m1 = vdt::fast_inv(n1-1.);
+	double leftpow = gbrmath::fast_pow(n1invalpha1,-n1*invn1m1);
+	double left0 = width*vdt::fast_exp(-0.5*alpha1*alpha1)*invn1m1;
+	double left1, left2;
+	
+	if (xmax>(mean-alpha1*width)) left1 = n1invalpha1;
+	else left1 = gbrmath::fast_pow( leftpow*(n1invalpha1 - alpha1 - thigh), 1.-n1);
+	
+	if (tmin<-1000.) left2 = 0.;
+	else left2 = gbrmath::fast_pow( leftpow*(n1invalpha1 - alpha1 - tmin ), 1.-n1);
+	
+	left = left0*(left1-left2);
+	
+	//left = width*vdt::fast_exp(-0.5*alpha1*alpha1)*invn1m1*(n1invalpha1 -  gbrmath::fast_pow( gbrmath::fast_pow(n1invalpha1,-n1*invn1m1)*(n1invalpha1 - alpha1 - tmin), 1.-n1)) ;
+	//left = width*vdt::fast_exp(-0.5*alpha1*alpha1)*invn1m1*(n1invalpha1 -  gbrmath::fast_pow( gbrmath::fast_pow(n1invalpha1,-n1*invn1m1)*(n1invalpha1 - alpha1 - tmin), 1.-n1)) ;
+	//left = A1*vdt::fast_inv(-n1+1.0)*width*(gbrmath::fast_pow(B1-(left_low-mean)*invwidth,-n1+1.)-gbrmath::fast_pow(B1-(left_high-mean)*invwidth,-n1+1.));
+      }
+      else {
+	double A1 = gbrmath::fast_pow(n1invalpha1,n1)*vdt::fast_exp(-0.5*alpha1*alpha1);
+	double B1 = n1invalpha1-fabs(alpha1);	
+	left = A1*width*(vdt::fast_log(B1-(left_low-mean)*invwidth) - vdt::fast_log(B1-(left_high-mean)*invwidth) );
+      }
+    }
    }
  
    //compute right tail;
-   double A2 = gbrmath::fast_pow(n2invalpha2,n2)*vdt::fast_exp(-0.5*alpha2*alpha2);
-   double B2 = n2invalpha2-fabs(alpha2);
- 
-   double right_low=std::max(x.min(rangeName),mean + alpha2*width);
-   double right_high=x.max(rangeName);
-   if(right_low < right_high){ //is the right tail in range?
-     if(fabs(n2-1.0)>1.e-5)
-       right = A2*vdt::fast_inv(-n2+1.0)*width*(gbrmath::fast_pow(B2+(right_high-mean)*invwidth,-n2+1.)-gbrmath::fast_pow(B2+(right_low-mean)*invwidth,-n2+1.));
-     else
-       right = A2*width*(vdt::fast_log(B2+(right_high-mean)*invwidth) - vdt::fast_log(B2+(right_low-mean)*invwidth) );
+   if (isfullrange && (n2-1.0)>1.e-5) {
+     right = width*vdt::fast_exp(-0.5*alpha2*alpha2)*n2*vdt::fast_inv(alpha2*(n2-1.));
+   }
+   else {    
+    double right_low=std::max(xmin,mean + alpha2*width);
+    double right_high=xmax;
+    double tlow = (right_low - mean)*invwidth;
+    
+    if(right_low < right_high){ //is the right tail in range?
+      double n2invalpha2 = n2*vdt::fast_inv(fabs(alpha2)); 
+      if(fabs(n2-1.0)>1.e-5) {
+	double invn2m2 = vdt::fast_inv(n2-1.);
+	double rightpow = gbrmath::fast_pow(n2invalpha2,-n2*invn2m2);
+	double right0 = width*vdt::fast_exp(-0.5*alpha2*alpha2)*invn2m2;
+	double right1, right2;
+	
+	if (xmin<(mean+alpha2*width)) right1 = n2invalpha2;
+	else right1 = gbrmath::fast_pow( rightpow*(n2invalpha2 - alpha2 + tlow), 1.-n2);
+	
+	if (tmax>1000.) right2 = 0.;
+	else right2 = gbrmath::fast_pow( rightpow*(n2invalpha2 - alpha2 + tmax), 1.-n2);
+	
+	right = right0*(right1-right2);	
+	
+	//right = A2*vdt::fast_inv(-n2+1.0)*width*(gbrmath::fast_pow(B2+(right_high-mean)*invwidth,-n2+1.)-gbrmath::fast_pow(B2+(right_low-mean)*invwidth,-n2+1.));
+      }
+      else {
+	double A2 = gbrmath::fast_pow(n2invalpha2,n2)*vdt::fast_exp(-0.5*alpha2*alpha2);
+	double B2 = n2invalpha2-fabs(alpha2);
+	right = A2*width*(vdt::fast_log(B2+(right_high-mean)*invwidth) - vdt::fast_log(B2+(right_low-mean)*invwidth) );
+      }
+    }
+   }
+   
+   double sum = left + central + right;
+   
+   //if (!std::isnormal(left) || !std::isnormal(central) || !std::isnormal(right)) {
+   if (!std::isnormal(sum)) {
+     printf("bad int: mean = %5f, sigma = %5f, alpha1 = %5f, n1 = %5f, alpha2 = %5f, n2 = %5f\n",double(mean),double(width),double(alpha1),double(n1),double(alpha2), double(n2));
+     //printf("left = %5f, central = %5f, right = %5f, A1 = %5f, B1 = %5f, A2 = %5f, B2 = %5f, integral = %5f\n",left,central,right,A1,B1,A2,B2,left+central+right);
+     printf("left = %5f, central = %5f, right = %5f, integral = %5f\n",left,central,right,sum);
    }
      
-   return left+central+right;
+   return sum;
  
  }
  
