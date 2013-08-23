@@ -3247,6 +3247,18 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForest *forest) {
   
  // printf("FitRespones done invert\n");
 
+  double drv=0.;
+  for (int ipar=0; ipar<msize; ++ipar) {
+    drv += dpar[ipar]*dL[ipar];
+    if (!std::isnormal(dL[ipar])) {
+      solved = false;
+    }
+  }
+  
+  if (drv>=0) {
+    solved = false;
+  }  
+  
   
   double step = fShrinkage;
 
