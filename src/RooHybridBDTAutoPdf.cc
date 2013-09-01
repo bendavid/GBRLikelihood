@@ -205,15 +205,21 @@ RooRealConstraint::RooRealConstraint(const char *name, const char *title, RooAbs
   _offset(_low + 0.5*(_high-_low))
 {
 
-  RooGBRTarget *var = dynamic_cast<RooGBRTarget*>(&real);
+  RooGBRTarget *tgt = dynamic_cast<RooGBRTarget*>(&real);
+  RooRealVar *var = 0;
+  
+  
+  if (tgt) var = tgt->Var();
+  else var = dynamic_cast<RooRealVar*>(&real);
+  
   
   if (var) {
-    double oldval = var->Var()->getVal();
+    double oldval = var->getVal();
     double newval = asin(2.0*(oldval-_low)/(_high-_low)-1.0);
     //double newval = atanh( (oldval - _offset)/_scale );
     //double newval = -log(_scale/(oldval-_low) - 1.0);
     //double newval = tan( (oldval - _offset)/_scale );
-    var->Var()->setVal(newval);
+    var->setVal(newval);
     
     printf("oldval = %f, newval = %5f, evaluate = %5f\n",oldval,newval,evaluate());
   }
@@ -1937,8 +1943,8 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
   //  float sumwright=0.;
     int bestbin=0;
     
-    //const double fulldiff = std::min(0.,-0.5*sumtgt*sumtgt*vdt::fast_inv(sumtgt2));
-    const double fulldiff = std::min(0.,-0.5*sumtgt*sumtgt/sumtgt2);
+    const double fulldiff = std::min(0.,-0.5*sumtgt*sumtgt*vdt::fast_inv(sumtgt2));
+    //const double fulldiff = std::min(0.,-0.5*sumtgt*sumtgt/sumtgt2);
     
 
     
@@ -1993,7 +1999,8 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
       
 
 
-      if ( _bsepgains[ivar][ibin]>maxsepgain && !std::isinf(_bsepgains[ivar][ibin]) && _sumtgt2s[ivar][ibin]>0. && (sumtgt2-_sumtgt2s[ivar][ibin])>0.) {
+      //if ( _bsepgains[ivar][ibin]>maxsepgain && !std::isinf(_bsepgains[ivar][ibin]) && _sumtgt2s[ivar][ibin]>0. && (sumtgt2-_sumtgt2s[ivar][ibin])>0.) {
+        if ( _bsepgains[ivar][ibin]>maxsepgain && std::isnormal(_bsepgains[ivar][ibin])) {
 	
 	bool passminweights = true;
 	double minweights = std::numeric_limits<double>::max();
