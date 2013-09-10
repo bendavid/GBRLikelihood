@@ -47,7 +47,28 @@ private:
   
 };
 
-
+class RooNormPdf : public RooAbsReal {
+ 
+public:
+  RooNormPdf() {}
+  RooNormPdf(const char *name, const char *title, RooAbsPdf &pdf, const RooArgSet &forcednormset);
+  RooNormPdf(const RooNormPdf &other, const char* name=0);
+  virtual ~RooNormPdf() {}
+  
+  virtual TObject* clone(const char* newname) const { return new RooNormPdf(*this,newname); }
+  
+  
+protected:
+  Double_t evaluate() const;
+  
+  RooRealProxy _pdf;
+  RooListProxy _forcednormset;
+  
+  
+private:
+  ClassDef(RooNormPdf,1)    
+  
+};
 
 class RooRealConstraint : public RooAbsReal {
  
@@ -256,6 +277,7 @@ public:
   void SetMaxNSpurious(double x) { fMaxNSpurious = x; }
   void SetTransitionQuantile(float x)  { fTransitionQuantile = x;   }
   void SetMinWeights(const std::vector<double> &minweights) { fMinWeights = minweights; }
+  void SetMinWeightTotal(double x) { fMinWeightTotal = x; }
   void SetMaxDepth(int depth) { fMaxDepth = depth; } 
   void SetMaxNodes(int max) { fMaxNodes = max; }
   void SetPrescaleInit(int n) { fPrescaleInit = n; }
@@ -402,6 +424,7 @@ protected:
   std::string               fTargetVar;
   int                       fMinEvents;
   std::vector<double>       fMinWeights;
+  double                    fMinWeightTotal;
   double                    fShrinkage;
   int                       fNTrees;
   const int                 fNQuantiles;

@@ -69,6 +69,8 @@
 #include <stdlib.h>
 #include <malloc.h>
 #include "../interface/GBRArrayUtils.h"
+#include "../interface/GBRMath.h"
+
 
 ClassImp(RooTreeConvert)
 
@@ -194,6 +196,35 @@ RooDataSet *RooTreeConvert::CreateDataSet(std::string name, TTree *tree, RooArgL
 }
 
 
+ClassImp(RooNormPdf)
+
+RooNormPdf::RooNormPdf(const char *name, const char *title, RooAbsPdf &pdf, const RooArgSet &forcednormset) :
+  RooAbsReal(name,title),
+  _pdf("pdf","",this,pdf),
+  _forcednormset("forcednormset","",this)
+{
+
+  _forcednormset.add(forcednormset);
+  
+}
+  
+  
+RooNormPdf::RooNormPdf(const RooNormPdf& other, const char* name) :
+  RooAbsReal(other,name),
+  _pdf("pdf",this,other._pdf),
+  _forcednormset("pdf",this,other._forcednormset)
+{
+  
+}
+
+Double_t RooNormPdf::evaluate() const
+{
+ 
+  return _pdf.arg().getVal(_forcednormset);
+  
+}
+
+
 ClassImp(RooRealConstraint)
 
 RooRealConstraint::RooRealConstraint(const char *name, const char *title, RooAbsReal &real, double low, double high) :
@@ -297,7 +328,7 @@ Double_t RooPowerLaw::evaluate() const
  
   //const RooArgSet* nset = _normSet ;  
   
-  return pow(_x,_p);
+  return gbrmath::fast_pow(_x,_p);
     
 }
 
@@ -321,7 +352,7 @@ Double_t RooPowerLaw::analyticalIntegral(Int_t code, const char* rangeName) cons
   double omp = 1.0 + _p;
   
   
-  return  ((pow(xmax,omp)-pow(xmin,omp))/omp);
+  return  ((gbrmath::fast_pow(xmax,omp)-gbrmath::fast_pow(xmin,omp))*vdt::fast_inv(omp));
   
 }
 
@@ -633,7 +664,8 @@ RooHybridBDTAutoPdf::RooHybridBDTAutoPdf(const char *name, const char *title, Ro
   fGraphDelta(0),
   //fLambda(new RooRealVar("lambda","",0.)),
   fMinEvents(-99),  
-  fMinWeights(std::vector<double>(data.size(),1000.)),
+  //fMinWeights(std::vector<double>(data.size(),1000.)),
+  fMinWeightTotal(-99.),
   fShrinkage(0.5),
   fNTrees(20),
   fNQuantiles(std::numeric_limits<unsigned short>::max()+1),
@@ -1657,6 +1689,11 @@ const HybridGBRForest *RooHybridBDTAutoPdf::TrainForest(int ntrees, bool reusefo
       break;
     }
     
+    if (nunittrees>100) {
+      printf("Max number of unit trees %i exceeded, breaking\n",nunittrees);
+      break;
+    }
+    
     oldnllidx = nllvals.size() - 3.0/fShrinkage - 1;
     //if (oldnllidx>=0 && (fNLLVal - nllvals[oldnllidx])>(-2e-3) && std::abs(dldrval-dldrvals[oldnllidx])<2e-1) {
     if (oldnllidx>=0 && (fNLLVal - nllvals[oldnllidx])>(-2e-3)) {
@@ -2000,18 +2037,26 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
 
 
       //if ( _bsepgains[ivar][ibin]>maxsepgain && !std::isinf(_bsepgains[ivar][ibin]) && _sumtgt2s[ivar][ibin]>0. && (sumtgt2-_sumtgt2s[ivar][ibin])>0.) {
-        if ( _bsepgains[ivar][ibin]>maxsepgain && std::isnormal(_bsepgains[ivar][ibin])) {
+      if ( _bsepgains[ivar][ibin]>maxsepgain && std::isnormal(_bsepgains[ivar][ibin])) {
 	
 	bool passminweights = true;
 	double minweights = std::numeric_limits<double>::max();
+	double totalweightleft = 0;
+	double totalweightright = 0;
 	for (int icls=0; icls<ncls; ++icls) {
 	  double minweightcls = std::min(_sumwscls[ivar][icls][ibin], _sumwscls[ivar][icls][nbins-1] - _sumwscls[ivar][icls][ibin]);
-	  if (minweightcls < fMinWeights[icls]) {
+	  if (fMinWeights.size() && minweightcls < fMinWeights[icls]) {
 	    passminweights = false;
 	  }
 	  if (minweightcls < minweights) {
 	    minweights = minweightcls;
 	  }
+	  totalweightleft += _sumwscls[ivar][icls][ibin];
+	  totalweightright += _sumwscls[ivar][icls][nbins-1] - _sumwscls[ivar][icls][ibin];
+	}
+	
+	if (fMinWeightTotal>=0. && (totalweightleft<fMinWeightTotal || totalweightright<fMinWeightTotal) ) {
+	  passminweights = false;
 	}
 	
 	
