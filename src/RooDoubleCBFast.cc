@@ -109,10 +109,9 @@ using namespace RooFit;
    
    //bool isfullrange = xmin<=-RooNumber::infinity() && xmax>=RooNumber::infinity();
  
-   static const double root2 = sqrt(2) ;
    static const double rootPiBy2 = sqrt(atan2(0.0,-1.0)/2.0);
-   double xscale = root2*width;
- 
+   static const double invRoot2 = 1.0/sqrt(2);   
+   
    double invwidth = vdt::fast_inv(width);
    
    double tmin = (xmin-mean)*invwidth;
@@ -123,9 +122,12 @@ using namespace RooFit;
    //compute gaussian contribution
    double central_low =std::max(xmin,mean - alpha1*width );
    double central_high=std::min(xmax,mean + alpha2*width );
-   if(central_low < central_high) // is the gaussian part in range?
-     central = rootPiBy2*width*(TMath::Erf((central_high-mean)/xscale)-TMath::Erf((central_low-mean)/xscale));
- 
+   
+   double tcentral_low = (central_low-mean)*invwidth;
+   double tcentral_high = (central_high-mean)*invwidth;
+   if(central_low < central_high)  {// is the gaussian part in range?
+     central = rootPiBy2*width*(TMath::Erf(tcentral_high*invRoot2)-TMath::Erf(tcentral_low*invRoot2));
+   }
    //compute left tail;
    if (isfullrange  && (n1-1.0)>1.e-5) {
     left = width*vdt::fast_exp(-0.5*alpha1*alpha1)*n1*vdt::fast_inv(alpha1*(n1-1.)); 
