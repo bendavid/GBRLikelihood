@@ -35,7 +35,7 @@
 	  
           fVars = new float[nvars];
           fQuantiles = new int[nvars];
-          fTargets = new float[ntargets];
+          fTargets = new double[ntargets];
           fTransTargets = new float[ntargets];
 	  fTransTargets2 = new float[ntargets];
           fDerivatives = new double[nparms];
@@ -74,9 +74,9 @@
        //cache computed qunatities needed for split-search
        void SetWeight(float x)     { fWeight = x; }
        
-       float Target(int i) const { return fTargets[i]; }
+       double Target(int i) const { return fTargets[i]; }
        float TransTarget(int i) const { return fTransTargets[i]; }
-       void SetTarget(int i, float x) { fTargets[i] = x; }
+       void SetTarget(int i, double x) { fTargets[i] = x; }
        void SetTransTarget(int i, float x) { fTransTargets[i] = x; }
        
        double PdfVal() const { return fPdfVal; }
@@ -99,7 +99,7 @@
        
     protected:
       float                    *fVars;
-      float                    *fTargets;
+      double                   *fTargets;
       float                    *fTransTargets;
       float                    *fTransTargets2;      
       int                      *fQuantiles;

@@ -1239,9 +1239,10 @@ void RooHybridBDTAutoPdf::UpdateTargets(int nvars, double sumw, int itree) {
 	//double drv2val = Derivative2Fast(static_cast<RooAbsReal*>(fStaticPdfsClones[ithread].at(evcls)),pdfval,static_cast<RooRealVar*>(fFullParmsClones[ithread].at(ivar)),&fParmSetClones[ithread],1e-3*static_cast<RooRealVar*>(fFullParmsClones[ithread].at(ivar))->getError());
 	
         double drv2val = (upval + downval - 2.0*pdfval)*vdt::fast_inv(step*step);
-
 	fEvts.at(iev)->SetDerivative2(ivar,drv2val);
-
+        //if (itgt<0) continue;   
+        
+        
 //         for (unsigned int jidx=iidx+1; jidx<fOuterIndices[evcls].size(); ++jidx) {
 //           int jvar = fOuterIndices[evcls][jidx];
 //           double drv2ij = Derivative2Fast(static_cast<RooAbsReal*>(fStaticPdfsClones[ithread].at(evcls)),static_cast<RooRealVar*>(fFullParmsClones[ithread].at(ivar)),static_cast<RooRealVar*>(fFullParmsClones[ithread].at(jvar)),&fParmSetClones[ithread],1e-3*static_cast<RooRealVar*>(fFullParmsClones[ithread].at(ivar))->getError(),1e-3*static_cast<RooRealVar*>(fFullParmsClones[ithread].at(jvar))->getError());
@@ -1694,11 +1695,13 @@ const HybridGBRForest *RooHybridBDTAutoPdf::TrainForest(int ntrees, bool reusefo
       break;
     }
     
-    oldnllidx = nllvals.size() - 3.0/fShrinkage - 1;
-    //if (oldnllidx>=0 && (fNLLVal - nllvals[oldnllidx])>(-2e-3) && std::abs(dldrval-dldrvals[oldnllidx])<2e-1) {
-    if (oldnllidx>=0 && (fNLLVal - nllvals[oldnllidx])>(-2e-3)) {
-      printf("breaking\n");
-      break;
+    if (0) {
+      oldnllidx = nllvals.size() - 3.0/fShrinkage - 1;
+      //if (oldnllidx>=0 && (fNLLVal - nllvals[oldnllidx])>(-2e-3) && std::abs(dldrval-dldrvals[oldnllidx])<2e-1) {
+      if (oldnllidx>=0 && (fNLLVal - nllvals[oldnllidx])>(-2e-3)) {
+	printf("breaking\n");
+	break;
+      }
     }
 
   }
@@ -3014,6 +3017,7 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForest *forest) {
   //bool usematrix = true;
   bool usematrix = msize<8000;
   //bool usematrix = false;
+  //usematrix = false;
   
   //double lambda = 1.0;
 //    double nll = 0.;
@@ -3027,6 +3031,7 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForest *forest) {
   }
   //std::map<std::pair<int,int>,double> d2Lmap;
   TVectorD dL(msize);
+  //TVectorD d2Lv(msize);
 
   RooArgSet parmset(fParmVars);
 	
@@ -3035,6 +3040,7 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForest *forest) {
   //std::vector<TMatrixDSym> d2Ls(fNThreads,TMatrixDSym(msize));
   //std::vector<std::map<std::pair<int,int>,double> > d2Lmaps(fNThreads);
   std::vector<TVectorD> dLs(fNThreads,TVectorD(msize));
+  //std::vector<TVectorD> d2Lvs(fNThreads,TVectorD(msize));
   
   
   std::vector<double> nmcs(fNThreads);
@@ -3088,7 +3094,13 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForest *forest) {
       
       dLs[ithread][iel] += -weight*drvi*invpdf;
       
+      
+      
+      //d2Lvs[ithread][iel] += -weight*drv2i*invpdf + weight*drvi*drvi*invpdfsq;
+      
       if (!usematrix) continue;
+      
+//      double drv2i = fEvts[iev]->Derivative2(idrv);  
       
       //double drv2i = fEvts[iev]->Derivative2(idrv);
       //d2Lmaps[ithread][std::pair<int,int>(iel,iel)] += -weight*drv2i*invpdf;
@@ -3097,6 +3109,14 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForest *forest) {
       //d2Ls[ithread][iel][iel] += -weight*drv2i*invpdf;
       
 
+//       double drv2i = fEvts[iev]->Derivative2(idrv);
+//       
+//       double d2approxi = weight*drvi*drvi*invpdfsq;
+//       double d2i = d2approxi - weight*drv2i*invpdf;
+//       
+//       if (std::abs(d2i)<(std::abs(1e-3*d2approxi))) continue;
+      
+      
       for (unsigned int jidx=iidx; jidx<fOuterIndices[evcls].size(); ++jidx) {
       
 	
@@ -3114,8 +3134,33 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForest *forest) {
         
         //double updval = d2L(iel,jel) + weight*drvi*drvj*invpdfsq;
         
+        //if (fEvts[iev]->Derivative2(idrv)==0. || fEvts[iev]->Derivative2(jdrv)==0.) continue;
+        
+/*        double drv2j = fEvts[iev]->Derivative2(idrv);
+        
+        
+        double d2approxj = weight*drvj*drvj*invpdfsq;
+        double d2j = d2approxj - weight*drv2j*invpdf;
+        
+        if (std::abs(d2j)<(std::abs(1e-3*d2approxj))) continue;  */    
+        
+        double d2val = weight*drvi*drvj*invpdfsq;
+        
+        
+        
+//         if (idrv==jdrv) {
+//           double drv2ij = fEvts[iev]->Derivative2(jdrv);
+//           d2val += -weight*drv2ij*invpdf;
+//         }
+//         else {
+//           continue;
+//         }
+        
+        
+        
         #pragma omp atomic update
-        d2L(iel,jel) += weight*drvi*drvj*invpdfsq;
+        d2L(iel,jel) += d2val;
+        //d2L(iel,jel) += weight*drvi*drvj*invpdfsq;
         
         //d2Lmaps[ithread][std::pair<int,int>(iel,jel)] += weight*drvi*drvj*invpdfsq;
 	//d2Ls[ithread][iel][jel] += weight*drvi*drvj*invpdfsq;
@@ -3130,10 +3175,11 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForest *forest) {
   
   for (int ithread=0; ithread<fNThreads; ++ithread) {
     dL += dLs[ithread];
+    //d2Lv += d2Lvs[ithread];
     //d2L += d2Ls[ithread];
     nmc += nmcs[ithread];
     
-    if (!usematrix) continue;
+    //if (!usematrix) continue;
 
     
 //     for (std::map<std::pair<int, int>, double>::const_iterator it=d2Lmaps[ithread].begin(); it!=d2Lmaps[ithread].end(); ++it) {
@@ -3152,8 +3198,14 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForest *forest) {
 	double drvi = Derivative1(static_cast<RooAbsReal*>(fFullFuncs.at(infunc)),static_cast<RooRealVar*>(fFullParms.at(idrv)),&parmset,1e-3*static_cast<RooRealVar*>(fFullParms.at(idrv))->getError());
 	
 	dL[iel] += drvi;
-      
+
         if (!usematrix) continue;
+        
+	//double drv2i = Derivative2(static_cast<RooAbsReal*>(fFullFuncs.at(infunc)),static_cast<RooRealVar*>(fFullParms.at(idrv)),&parmset,1e-3*static_cast<RooRealVar*>(fFullParms.at(idrv))->getError());
+	
+	//d2Lv[iel] += drv2i;
+	
+
 
 	
     for (unsigned int jidx=iidx; jidx<fOuterIndices[infunc].size(); ++jidx) {
@@ -3196,7 +3248,11 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForest *forest) {
   }
 
   bool solved = false;
-  TVectorD dpar(msize);    
+  //bool gradient = false;
+  
+  TVectorD dpar(msize);
+  TVectorD dparm(msize);    
+  TVectorD dparg = -1.0*dL;
   
 //solve
   if (usematrix) {
@@ -3207,203 +3263,156 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForest *forest) {
     //TDecompChol dbk(d2L);
     solved = dbk.Solve(dLc);
     printf("done matrix decomposition\n");  
-    dpar = -1.0*dLc;
+    dparm = -1.0*dLc;
   }
-
   
-
-//   bool solved = false;
-//   TVectorD dpar(msize);  
+  double dllrm = 0.;
+  double dllrg = 0.;
   
-//   double maxscale = 0.;
-//   for (int iel=0; iel<msize; ++iel) {
-//     int iparm;
-//     if (iel<fExtVars.getSize()) {
-//       iparm = iel;
-//     }
-//     else {
-//       iparm = (iel-fExtVars.getSize())%fNTargets;
-//     }
-//     double scale = dL[iel]/fStepSizes[iparm];
-//     if (scale>maxscale) {
-//       maxscale = scale;
-//     }
-//   }
-//   
-//   double nlldrv=0;
-//   for (int iel=0; iel<msize; ++iel) {
-//     nlldrv += dL[iel];
-//   }
-//   
-//   
-//   double drvstep = 1.0/maxscale;
-//   
-//   double upnllval = EvalLoss(forest,drvstep,dL);
-//   double downnllval = EvalLoss(forest,-drvstep,dL);
-//   
-//   double nlldrv2 = (upnllval + downnllval - 2.0*fNLLVal)/drvstep/drvstep;
-//   
-//   dpar = (-nlldrv*nlldrv/nlldrv2)*dL;
-//   solved = true;
+  double step = 0;
+  double stepm = 0;
+  double stepg = 0;
   
   
-  
-  
-  
-  
-//   if (usematrix) {
-//     //symmetrize matrix
-//     for (std::map<std::pair<int, int>, double>::const_iterator it=d2Lmap.begin(); it!=d2Lmap.end(); ++it) {
-//       d2Lmap[std::pair<int,int>(it->first.second,it->first.first)] = it->second;
-//     }
-//     
-//     printf("create sparse matrix, msize = %i, nnzr = %i\n",msize,int(d2Lmap.size()));;
-//     
-//     
-//     sparserows.resize(d2Lmap.size());
-//     sparsecols.resize(d2Lmap.size());
-//     sparsedata.resize(d2Lmap.size());
-//     
-//     {
-//       int isparse = 0;
-//       for (std::map<std::pair<int, int>, double>::const_iterator it=d2Lmap.begin(); it!=d2Lmap.end(); ++it, ++isparse) {
-// 	sparserows[isparse] = it->first.first;
-// 	sparsecols[isparse] = it->first.second;
-// 	sparsedata[isparse] = it->second;
-//       }
-//     }
-// 
-//     TMatrixDSparse d2L(msize,msize);
-//     d2L.SetMatrixArray(sparsedata.size(), &sparserows[0], &sparsecols[0], &sparsedata[0]);
-//   
-//     printf("start matrix decomposition\n");
-//     TVectorD dLc(dL);
-//     TDecompSparse dsp(d2L,0);
-//     solved = dsp.Solve(dLc);
-//     dpar = -1.0*dLc;
-//     printf("done matrix decomposition\n");
-//     
-//     double drv=0.;
-//     for (int ipar=0; ipar<msize; ++ipar) {
-//       drv += dpar[ipar]*dL[ipar];
-//       if (std::isnan(dL[ipar]) || std::isinf(dL[ipar])) {
-// 	solved = false;
-//       }
-//     }
-//     
-//     if (drv>=0) {
-//       solved = false;
-//     }
-//     
-//   }
-  
- // printf("FitRespones done invert\n");
-
-  double drv=0.;
-  for (int ipar=0; ipar<msize; ++ipar) {
-    drv += dpar[ipar]*dL[ipar];
-    if (!std::isnormal(dL[ipar])) {
-      solved = false;
+  if (solved) {
+    for (int i=0; i<msize; ++i) {
+      //protect against inf/nan elements and set them to zero
+      if (!std::isnormal(dparm(i))) dparm(i) = 0.;
+      
+      //protect against elements which run against the gradient and invert them
+      //if ( (dL(i)*dparm(i))>0. ) dparm(i) = -dparm(i);
+      if ( (dL(i)*dparm(i))>0. ) dparm(i) = 0.;
     }
+    
+    double tgtdL = -msize;
+    
+    double deltaL = 0;
+    for (int i=0; i<msize; ++i) {
+      deltaL += dL[i]*dparm[i];
+    }   
+        
+   //if (deltaL>0.) tgtdL = msize;
+    
+    stepm = 2.0*tgtdL/deltaL;
+    double drvstep = 1e-1*stepm;
+    //step *= fShrinkage;
+    
+    printf("deltaL = %5e, initial stepm = %5e, drvstep = %5e\n",deltaL, stepm,drvstep);
+    
+    for (int diter=0; diter<599; ++diter) {
+      double upnllval = EvalLoss(forest,drvstep,dparm);
+      double downnllval = EvalLoss(forest,-drvstep,dparm);
+      
+      double nlldrv = (upnllval - downnllval)/(2.0*drvstep);
+      double nlldrv2 = (upnllval + downnllval - 2.0*fNLLVal)/drvstep/drvstep;
+      
+      double maxscale = 0.;
+      stepm = -deltaL/nlldrv2;
+    
+      dllrm = -0.5*deltaL*deltaL/nlldrv2;
+      
+      if (nlldrv2<0.) {
+        stepm = -stepm;
+        solved = false;
+      }
+      
+      printf("upnllval = %5f, downnllval = %5f, fNLLVal = %5f, maxscale = %5f, drvstep = %5e, nlldrv = %5e, nlldrv2 = %5e, stepm = %5e, dllrm = %5f\n",upnllval,downnllval,fNLLVal,maxscale,drvstep,nlldrv,nlldrv2,stepm,dllrm);
+      
+      //if ( (nlldrv*deltaL)>0. && ((upnllval-fNLLVal)*(downnllval-fNLLVal))<0.) {
+      if ( (nlldrv*deltaL)>0.) {        
+        break;
+      }
+      
+      //if (nlldrv>=0. || nlldrv2<=0. || !std::isfinite(step) ) {
+      if (!std::isfinite(step) ) {      
+        stepm = 0.1*fShrinkage;
+        solved = false;
+        break;
+      }
+      
+      drvstep /= 5.0;
+      
+    }
+    
+    dpar = dparm;
+    step = fShrinkage*stepm;
+    
   }
   
-  if (drv>=0) {
-    solved = false;
-  }  
-  
-  
-  double step = fShrinkage;
+//  double step = fShrinkage;
 
-  double drvstep = 1e-3;
-  if (!solved) {
- // if (1) {  
-    printf("fallback to gradient descent\n");
+  bool ismaximum = false;
+  
+//  double drvstep = 1e-5;
+ // if (!solved) {
+  if (!solved) {  
+    //gradient = true;
+    //printf("fallback to gradient descent\n");
     dpar = -1.0*dL;
-    drvstep = 1e-9;
-  }
-  
-//   double maxscale = 0.;
-//   for (int iel=0; iel<msize; ++iel) {
-//     int iparm;
-//     if (iel<fExtVars.getSize()) {
-//       iparm = iel;
-//     }
-//     else {
-//       //iel = localidxs[itgt] + termidx
-//       //iparm = (iel-fExtVars.getSize())%fNTargets;
-//       int tgt = 0;
-//       for (int itgt=0; itgt<fNTargets; ++itgt) {
-//         if (iel>=localidxs[itgt]) {
-//           tgt = itgt;
-//           break;
-//         }        
-//       }
-//       iparm = fExtVars.getSize() + tgt;
-//     }
-//     double scale = dpar[iel]/fStepSizes[iparm];
-//     if (scale>maxscale) {
-//       maxscale = scale;
-//     }
-//   }
-  
-//   double nlldrv=0;
-//   for (int iel=0; iel<msize; ++iel) {
-//     nlldrv += dpar[iel]*dL[iel];
-//   }
-  
-  
-  //double drvstep = 1.0/maxscale;
-  if (fShrinkage<0.85)
-  {
-  
-    double upnllval = EvalLoss(forest,drvstep,dpar);
-    double downnllval = EvalLoss(forest,-drvstep,dpar);
     
-    double nlldrv = (upnllval - downnllval)/(2.0*drvstep);
-    double nlldrv2 = (upnllval + downnllval - 2.0*fNLLVal)/drvstep/drvstep;
+    double tgtdL = -msize;
     
-    double maxscale = 0.;
-    step = -fShrinkage*nlldrv/nlldrv2;
-    
-    //step = -0./0.;
-    
-    printf("upnllval = %5f, downnllval = %5f, fNLLVal = %5f, maxscale = %5f, drvstep = %5f, nlldrv = %5f, nlldrv2 = %5f, step = %5f\n",upnllval,downnllval,fNLLVal,maxscale,drvstep,nlldrv,nlldrv2,step);
-    
-    //if (nlldrv>=0. || nlldrv2<=0. || !std::isfinite(step) ) step = 0.1*fShrinkage;
-    if (nlldrv>=0. || nlldrv2<=0. || !std::isnormal(step) || step<(0.1*fShrinkage) ) step = 0.1*fShrinkage;
-    //if (nlldrv>=0. || nlldrv2<=0. || std::isinf(step) || std::isnan(step) ) step = 0.1*fShrinkage;
+    double deltaL = 0;
+    for (int i=0; i<msize; ++i) {
+      deltaL += dL[i]*dparg[i];
+    }   
         
     
+    stepg = 2.0*tgtdL/deltaL;
+    double drvstep = 1e-1*stepg;
+    
+    printf("deltaL = %5e, initial stepg = %5e, drvstep = %5e\n",deltaL, stepg, drvstep);
+    
+    for (int diter=0; diter<599; ++diter) {
+      double upnllval = EvalLoss(forest,drvstep,dparg);
+      double downnllval = EvalLoss(forest,-drvstep,dparg);
+      
+      double nlldrv = (upnllval - downnllval)/(2.0*drvstep);
+      double nlldrv2 = (upnllval + downnllval - 2.0*fNLLVal)/drvstep/drvstep;
+      
+      double maxscale = 0.;
+      stepg = -deltaL/nlldrv2;
+      
+      if (nlldrv2<0.) {
+        stepg = -stepg;
+        //gradient = false;
+      }
+      
+      dllrg = -0.5*deltaL*deltaL/nlldrv2;      
+      
+      printf("upnllval = %5f, downnllval = %5f, fNLLVal = %5f, maxscale = %5f, drvstep = %5e, nlldrv = %5e, nlldrv2 = %5e, stepg = %5e, dllrg = %5f\n",upnllval,downnllval,fNLLVal,maxscale,drvstep,nlldrv,nlldrv2,stepg,dllrg);
+      
+      
+      //if ( (nlldrv*deltaL)>0. && ((upnllval-fNLLVal)*(downnllval-fNLLVal))<0.) {
+      if ( (nlldrv*deltaL)>0.) {                
+	break;
+      }
+      
+      //if (nlldrv>=0. || nlldrv2<=0. || !std::isfinite(step) ) {
+      if (!std::isfinite(step) ) {	
+	stepg = 0.1*fShrinkage;
+        //gradient = false;
+	break;
+      }
+      
+      drvstep /= 5.0;
+      
+    }
+    
+    dpar = dparg;
+    step = fShrinkage*stepg;    
     
   }
-  else {
-    step = fShrinkage;
-  }
-   
-//   if (!solved) {
-//     printf("fallback to gradient descent\n");
-//     
-//     dpar = -1.0*dL;
-//     drvstep = 1e-9;
-//     
-//     double upnllval = EvalLoss(forest,drvstep,dpar);
-//     double downnllval = EvalLoss(forest,-drvstep,dpar);
-//     
-//     double nlldrv = (upnllval - downnllval)/(2.0*drvstep);
-//     double nlldrv2 = (upnllval + downnllval - 2.0*fNLLVal)/drvstep/drvstep;
-//     
-//     double maxscale = 0.;
-//     step = -fShrinkage*nlldrv/nlldrv2;
-//     
-//     printf("upnllval = %5f, downnllval = %5f, fNLLVal = %5f, maxscale = %5f, drvstep = %5f, nlldrv = %5f, nlldrv2 = %5f, step = %5f\n",upnllval,downnllval,fNLLVal,maxscale,drvstep,nlldrv,nlldrv2,step);    
-//     
-//   }
-  //step = fShrinkage;
   
-//   for (int iel=0; iel<msize; ++iel) {
-//     dpar[iel] = -dL[iel]/d2L(iel,iel);
-//   }
-
+  if (dllrm<=dllrg && solved) {
+    dpar = dparm;
+    step = fShrinkage*stepm;
+  }
+  else {
+    dpar = dparg;
+    step = fShrinkage*stepg;
+  }
+  
   double nllval = fNLLVal;
   int stepiter = 0;
   do {
@@ -3416,20 +3425,29 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForest *forest) {
     
     nllval = EvalLoss(forest,step,dpar);
     printf("step = %5f, nllval = %5f, fNLLVal = %5f\n",step,nllval,fNLLVal);
-    if ( (nllval-fNLLVal)<1e-3 ) {
-      break; 
+    //if (std::isnormal(nllval)) break;
+   
+    if ( std::isnormal(nllval) && ((ismaximum && (nllval-fNLLVal)>1e-3) || (!ismaximum && (nllval-fNLLVal)<1e-3)) ) {
+      break;
     }
     else {
       step /= 2.0;
     }
+    
+//     if ( (nllval-fNLLVal)<1e-3 ) {
+//       break; 
+//     }
+//     else {
+//       step /= 2.0;
+//     }
     ++stepiter;
   }
   while (stepiter<50);
 
-  if (!((nllval-fNLLVal)<1e-3)) {
-    step = 0.;
-    nllval = EvalLoss(forest, step,dpar);
-  }
+//   if (!((nllval-fNLLVal)<1e-3)) {
+//     step = 0.;
+//     nllval = EvalLoss(forest, step,dpar);
+//   }
   
   fNLLVal = nllval;
   
@@ -3473,7 +3491,7 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForest *forest) {
   for (std::vector<HybridGBREvent*>::const_iterator it = fEvts.begin(); it!=fEvts.end(); ++it) {
     for (int itgt=0; itgt<fNTargets; ++itgt) {
       int termidx = (*it)->CurrentNode(itgt);
-      (*it)->SetTarget(itgt,(*it)->Target(itgt)+step*dpar(localidxs[itgt] + termidx));
+      (*it)->SetTarget(itgt,(*it)->Target(itgt)+float(step*dpar(localidxs[itgt] + termidx)));
     }
   }  
 
@@ -3911,7 +3929,7 @@ double RooHybridBDTAutoPdf::Derivative2Fast(RooAbsReal *function, RooRealVar *va
   var2->setVal(startval2-stepb1);
   double valdowndown1 = function->getValV(nset);    
   
-  double drv1 = (valupup1+valdowndown1-valupdown1-valdownup1)/(4.0*stepa1*stepb1);
+  double drv1 = (valupup1+valdowndown1-valupdown1-valdownup1)*vdt::fast_inv(4.0*stepa1*stepb1);
   
   var1->setVal(startval1);
   var2->setVal(startval2);
