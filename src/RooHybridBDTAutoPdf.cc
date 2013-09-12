@@ -46,7 +46,7 @@
 #include "TMath.h"
 #include <Math/QuantFuncMathCore.h>
 #include <Math/ProbFunc.h>
-#include "../interface/HybridGBRForest.h"
+#include "../interface/HybridGBRForestD.h"
 #include "TMatrixDSym.h"
 #include "TVectorD.h"
 #include "TDecompChol.h"
@@ -103,7 +103,7 @@ RooDataSet *RooTreeConvert::CreateDataSet(std::string name, TTree *tree, std::ve
     if (iev%100000==0) printf("%i\n",int(iev));
     tree->LoadTree(iev);
     
-    float weight = cutform.EvalInstance();
+    double weight = cutform.EvalInstance();
     
     if (weight==0.) continue; //skip events with 0 weight
     
@@ -167,7 +167,7 @@ RooDataSet *RooTreeConvert::CreateDataSet(std::string name, TTree *tree, RooArgL
       }
     }
     
-    float weight = cutform.EvalInstance();
+    double weight = cutform.EvalInstance();
     
     if (weight==0.) continue; //skip events with 0 weight
     
@@ -522,7 +522,7 @@ ClassImp(RooGBRFunction)
 RooGBRFunction::RooGBRFunction(const char *name, const char *title, const RooArgList &vars, int ntargets) :
   RooAbsReal(name,title),
   _vars("vars","",this),
-  _forest(new HybridGBRForest(ntargets)),
+  _forest(new HybridGBRForestD(ntargets)),
   _eval(vars.getSize())
 {
   _vars.add(vars);
@@ -532,7 +532,7 @@ RooGBRFunction::RooGBRFunction(const char *name, const char *title, const RooArg
 RooGBRFunction::RooGBRFunction(const RooGBRFunction& other, const char* name) :
   RooAbsReal(other,name), 
   _vars("vars",this,other._vars),  
-  _forest(new HybridGBRForest(*other._forest)),
+  _forest(new HybridGBRForestD(*other._forest)),
   _eval(other._eval)
 {
   
@@ -545,7 +545,7 @@ RooGBRFunction::~RooGBRFunction()
 }
   
 //_____________________________________________________________________________  
-float RooGBRFunction::GetResponse(int itgt) const {
+double RooGBRFunction::GetResponse(int itgt) const {
   
   //printf("RooGBRFunction::GetResponse(%i)\n",itgt);
 //   if (isValueDirtyAndClear()) {
@@ -572,7 +572,7 @@ float RooGBRFunction::GetResponse(int itgt) const {
 }
 
 //_____________________________________________________________________________  
-void RooGBRFunction::SetForest(HybridGBRForest *forest) {
+void RooGBRFunction::SetForest(HybridGBRForestD *forest) {
  
   if (_forest) delete _forest;
   _forest = forest;
@@ -1507,7 +1507,7 @@ void RooHybridBDTAutoPdf::BuildQuantiles(int nvars, double sumw) {
 }
 
 
-const HybridGBRForest *RooHybridBDTAutoPdf::TrainForest(int ntrees, bool reuseforest) {
+const HybridGBRForestD *RooHybridBDTAutoPdf::TrainForest(int ntrees, bool reuseforest) {
 
   for (int ithread=0; ithread<fNThreads; ++ithread) {
     static_cast<RooAbsReal*>(fClones.at(ithread))->getValV(&fParmSetClones[ithread]);
@@ -1546,12 +1546,12 @@ const HybridGBRForest *RooHybridBDTAutoPdf::TrainForest(int ntrees, bool reusefo
   RooArgSet cvarset(fCondVars);
 
   
-  HybridGBRForest *forest  = 0;
+  HybridGBRForestD *forest  = 0;
   if (reuseforest) {
     forest = fFunc->Forest();
   }
   else {
-    forest = new HybridGBRForest(fFunc->Forest()->NTargets());
+    forest = new HybridGBRForestD(fFunc->Forest()->NTargets());
   }
   
   
@@ -1641,12 +1641,12 @@ const HybridGBRForest *RooHybridBDTAutoPdf::TrainForest(int ntrees, bool reusefo
 
     for (int itgt=0; itgt<fNTargets; ++itgt) {
       int treetgt = static_cast<RooGBRTarget*>(fTgtVars.at(itgt))->Index();
-      forest->Trees()[treetgt].push_back(HybridGBRTree()); 
+      forest->Trees()[treetgt].push_back(HybridGBRTreeD()); 
     }
     
     for (int itgt=0; itgt<fNTargets; ++itgt) {
       int treetgt = static_cast<RooGBRTarget*>(fTgtVars.at(itgt))->Index();
-      HybridGBRTree &tree = forest->Trees()[treetgt].back();      
+      HybridGBRTreeD &tree = forest->Trees()[treetgt].back();      
       TrainTree(fEvts,sumw,tree,nvarstrain,0.,0,limits,itgt);
       int treesize = tree.Responses().size();
       treesizes[itgt] = treesize;
@@ -1709,7 +1709,7 @@ const HybridGBRForest *RooHybridBDTAutoPdf::TrainForest(int ntrees, bool reusefo
   fFunc->setOperMode(RooAbsArg::Auto);
   
 //  printf("fNorm = %5f\n",fNorm);
-  //return fully trained HybridGBRForest
+  //return fully trained HybridGBRForestD
   
   if (reuseforest) {
     fFunc->setValueDirty();
@@ -1744,7 +1744,7 @@ const HybridGBRForest *RooHybridBDTAutoPdf::TrainForest(int ntrees, bool reusefo
     
   
 //_______________________________________________________________________
-void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, double sumwtotal, HybridGBRTree &tree, const int nvars, double transition, int depth, const std::vector<std::pair<float,float> > limits, int tgtidx) {
+void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, double sumwtotal, HybridGBRTreeD &tree, const int nvars, double transition, int depth, const std::vector<std::pair<float,float> > limits, int tgtidx) {
   
   
   //alignas(32) float floats[128];
@@ -2335,7 +2335,7 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
 
 
 //_______________________________________________________________________
-void RooHybridBDTAutoPdf::BuildLeaf(const std::vector<HybridGBREvent*> &evts, HybridGBRTree &tree, int tgtidx) {
+void RooHybridBDTAutoPdf::BuildLeaf(const std::vector<HybridGBREvent*> &evts, HybridGBRTreeD &tree, int tgtidx) {
 
   //printf("building leaf\n");
   
@@ -2441,7 +2441,7 @@ double RooHybridBDTAutoPdf::EvalLossRooFit() {
   
 }
 
-double RooHybridBDTAutoPdf::EvalLoss(HybridGBRForest *forest, double lambda, const TVectorD &dL, int itree) {
+double RooHybridBDTAutoPdf::EvalLoss(HybridGBRForestD *forest, double lambda, const TVectorD &dL, int itree) {
  
  // int tgtidx = itree%fNTargets;
   
@@ -2531,7 +2531,7 @@ double RooHybridBDTAutoPdf::EvalLoss(HybridGBRForest *forest, double lambda, con
 
     for (int itgt=0; itgt<fNTargets; ++itgt) {
       int iel = localidxs[itgt] + fEvts[ievt]->CurrentNode(itgt);
-      static_cast<RooRealVar*>(fStaticTgtsClones[ithread].at(itgt))->setVal(fEvts[ievt]->Target(itgt) + float(lambda*dL[iel]));
+      static_cast<RooRealVar*>(fStaticTgtsClones[ithread].at(itgt))->setVal(fEvts[ievt]->Target(itgt) + lambda*dL[iel]);
     }
     
     int evcls = fEvts[ievt]->Class(); 
@@ -2976,7 +2976,7 @@ void RooHybridBDTAutoPdf::FillDerivatives() {
 }
 
 
-void RooHybridBDTAutoPdf::FitResponses(HybridGBRForest *forest) {
+void RooHybridBDTAutoPdf::FitResponses(HybridGBRForestD *forest) {
 
   printf("fit responses\n");
   //int tgtidx = itree%(fNTargets);
@@ -3491,7 +3491,7 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForest *forest) {
   for (std::vector<HybridGBREvent*>::const_iterator it = fEvts.begin(); it!=fEvts.end(); ++it) {
     for (int itgt=0; itgt<fNTargets; ++itgt) {
       int termidx = (*it)->CurrentNode(itgt);
-      (*it)->SetTarget(itgt,(*it)->Target(itgt)+float(step*dpar(localidxs[itgt] + termidx)));
+      (*it)->SetTarget(itgt,(*it)->Target(itgt)+step*dpar(localidxs[itgt] + termidx));
     }
   }  
 
@@ -3537,7 +3537,7 @@ void RooHybridBDTAutoPdf::GradientMinos() {
 //     return; 
   
     //save initial state
-    HybridGBRForest *origforest = new HybridGBRForest(*fFunc->Forest());
+    HybridGBRForestD *origforest = new HybridGBRForestD(*fFunc->Forest());
     std::vector<double> extvals(fExtVars.getSize());
     for (int ivar=0; ivar<fExtVars.getSize(); ++ivar) {
       extvals[ivar] = static_cast<RooRealVar*>(fExtVars.at(ivar))->getVal();
@@ -3589,7 +3589,7 @@ void RooHybridBDTAutoPdf::GradientMinos() {
     }   
     
 //     //restore initial state
-//     fFunc->SetForest(new HybridGBRForest(*origforest));
+//     fFunc->SetForest(new HybridGBRForestD(*origforest));
 //     for (int ivar=0; ivar<fExtVars.getSize(); ++ivar) {
 //       static_cast<RooRealVar*>(fExtVars.at(ivar))->setVal(extvals[ivar]);
 //     }
@@ -3702,7 +3702,7 @@ void RooHybridBDTAutoPdf::GradientMinos() {
    fclose(fp);     
     
     //restore initial state
-    fFunc->SetForest(new HybridGBRForest(*origforest));
+    fFunc->SetForest(new HybridGBRForestD(*origforest));
     delete origforest;
     for (int ivar=0; ivar<fExtVars.getSize(); ++ivar) {
       static_cast<RooRealVar*>(fExtVars.at(ivar))->setVal(extvals[ivar]);
