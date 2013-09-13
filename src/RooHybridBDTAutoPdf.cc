@@ -3280,8 +3280,8 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForestD *forest) {
       if (!std::isnormal(dparm(i))) dparm(i) = 0.;
       
       //protect against elements which run against the gradient and invert them
-      //if ( (dL(i)*dparm(i))>0. ) dparm(i) = -dparm(i);
-      if ( (dL(i)*dparm(i))>0. ) dparm(i) = 0.;
+      if ( (dL(i)*dparm(i))>0. ) dparm(i) = -dparm(i);
+      //if ( (dL(i)*dparm(i))>0. ) dparm(i) = 0.;
     }
     
     double tgtdL = -msize;
