@@ -3017,7 +3017,7 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForestD *forest) {
   //bool usematrix = true;
   bool usematrix = msize<8000;
   //bool usematrix = false;
-  //usematrix = false;
+  usematrix = false;
   
   //double lambda = 1.0;
 //    double nll = 0.;
@@ -3283,55 +3283,71 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForestD *forest) {
       if ( (dL(i)*dparm(i))>0. ) dparm(i) = -dparm(i);
       //if ( (dL(i)*dparm(i))>0. ) dparm(i) = 0.;
     }
-    
-    double tgtdL = -msize;
-    
+        
     double deltaL = 0;
     for (int i=0; i<msize; ++i) {
       deltaL += dL[i]*dparm[i];
     }   
-        
-   //if (deltaL>0.) tgtdL = msize;
-    
-    stepm = 2.0*tgtdL/deltaL;
-    double drvstep = 1e-1*stepm;
-    //step *= fShrinkage;
-    
+   
+    stepm = 0.;
+    double drvstep = 0.1/deltaL;
+   
     printf("deltaL = %5e, initial stepm = %5e, drvstep = %5e\n",deltaL, stepm,drvstep);
     
-    for (int diter=0; diter<599; ++diter) {
-      double upnllval = EvalLoss(forest,drvstep,dparm);
-      double downnllval = EvalLoss(forest,-drvstep,dparm);
-      
-      double nlldrv = (upnllval - downnllval)/(2.0*drvstep);
-      double nlldrv2 = (upnllval + downnllval - 2.0*fNLLVal)/drvstep/drvstep;
-      
-      double maxscale = 0.;
-      stepm = -deltaL/nlldrv2;
+    double nllval = fNLLVal;
+    double dstep = 0.;
     
-      dllrm = -0.5*deltaL*deltaL/nlldrv2;
+    while (true) {
       
+      
+      if (stepm!=0. || dstep!=0.) {
+        nllval = EvalLoss(forest,stepm + dstep,dparm);
+        if (!std::isnormal(nllval)) {
+          dstep /= 2.0;
+          continue;
+        }
+      }      
+      
+      double upnllval = EvalLoss(forest,stepm + dstep + drvstep,dparm);
+      if (!std::isnormal(upnllval)) {
+        drvstep /= 2.0;
+        continue;
+      }
+        
+      double downnllval = EvalLoss(forest,stepm + dstep - drvstep,dparm);
+      if (!std::isnormal(downnllval)) {
+        drvstep /= 2.0;
+        continue;
+      }
+                  
+      double nlldrv = (upnllval - downnllval)/(2.0*drvstep);
+      double nlldrv2 = (upnllval + downnllval - 2.0*nllval)/drvstep/drvstep;      
+      
+      if (stepm==0. && dstep==0. && std::abs( (nlldrv-deltaL)/deltaL )>0.05) {
+        drvstep /= 5.0;
+        continue;
+      }
+      
+      
+      stepm += dstep;      
+
+      dstep = -nlldrv/nlldrv2;
+      dllrm = -0.5*nlldrv*nlldrv/nlldrv2;
+
       if (nlldrv2<0.) {
-        stepm = -stepm;
-        solved = false;
-      }
+        dstep = -dstep;
+	dllrm = -3.0*dllrm;
+      }     
       
-      printf("upnllval = %5f, downnllval = %5f, fNLLVal = %5f, maxscale = %5f, drvstep = %5e, nlldrv = %5e, nlldrv2 = %5e, stepm = %5e, dllrm = %5f\n",upnllval,downnllval,fNLLVal,maxscale,drvstep,nlldrv,nlldrv2,stepm,dllrm);
+      drvstep = 1e-2*dllrm/nlldrv;
       
-      //if ( (nlldrv*deltaL)>0. && ((upnllval-fNLLVal)*(downnllval-fNLLVal))<0.) {
-      if ( (nlldrv*deltaL)>0.) {        
-        break;
-      }
+      printf("upnllval = %5f, downnllval = %5f, nllval = %5f, fNLLVal = %5f, drvstep = %5e, nlldrv = %5e, nlldrv2 = %5e, stepm = %5e, dllrm = %5f\n",upnllval,downnllval,nllval, fNLLVal,drvstep,nlldrv,nlldrv2,stepm,dllrm);
       
-      //if (nlldrv>=0. || nlldrv2<=0. || !std::isfinite(step) ) {
-      if (!std::isfinite(step) ) {      
-        stepm = 0.1*fShrinkage;
-        solved = false;
-        break;
-      }
+      double nllthreshold = 0.1;
+      if (msize == fFullParms.getSize()) nllthreshold = 1e-4;
       
-      drvstep /= 5.0;
-      
+      if (std::abs(dllrm)<nllthreshold && stepm!=0) break;
+            
     }
     
     dpar = dparm;
@@ -3344,13 +3360,12 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForestD *forest) {
   bool ismaximum = false;
   
 //  double drvstep = 1e-5;
- // if (!solved) {
-  if (!solved) {  
+  if (!solved) {
+  //if (true) {  
     //gradient = true;
     //printf("fallback to gradient descent\n");
     dpar = -1.0*dL;
     
-    double tgtdL = -msize;
     
     double deltaL = 0;
     for (int i=0; i<msize; ++i) {
@@ -3358,45 +3373,65 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForestD *forest) {
     }   
         
     
-    stepg = 2.0*tgtdL/deltaL;
-    double drvstep = 1e-1*stepg;
+    stepg = 0.;
+    double drvstep = 0.1/deltaL;
+   
+    printf("deltaL = %5e, initial stepg = %5e, drvstep = %5e\n",deltaL, stepg,drvstep);
     
-    printf("deltaL = %5e, initial stepg = %5e, drvstep = %5e\n",deltaL, stepg, drvstep);
+    double nllval = fNLLVal;
+    double dstep = 0.;
     
-    for (int diter=0; diter<599; ++diter) {
-      double upnllval = EvalLoss(forest,drvstep,dparg);
-      double downnllval = EvalLoss(forest,-drvstep,dparg);
+    while (true) {
       
+      
+      if (stepg!=0. || dstep!=0.) {
+        nllval = EvalLoss(forest,stepg + dstep,dparg);
+        if (!std::isnormal(nllval)) {
+          dstep /= 2.0;
+          continue;
+        }
+      }      
+      
+      double upnllval = EvalLoss(forest,stepg + dstep + drvstep,dparg);
+      if (!std::isnormal(upnllval)) {
+        drvstep /= 2.0;
+        continue;
+      }
+        
+      double downnllval = EvalLoss(forest,stepg + dstep - drvstep,dparg);
+      if (!std::isnormal(downnllval)) {
+        drvstep /= 2.0;
+        continue;
+      }
+                  
       double nlldrv = (upnllval - downnllval)/(2.0*drvstep);
-      double nlldrv2 = (upnllval + downnllval - 2.0*fNLLVal)/drvstep/drvstep;
+      double nlldrv2 = (upnllval + downnllval - 2.0*nllval)/drvstep/drvstep;      
       
-      double maxscale = 0.;
-      stepg = -deltaL/nlldrv2;
+      if (stepg==0. && dstep==0. && std::abs( (nlldrv-deltaL)/deltaL )>0.05) {
+        drvstep /= 5.0;
+        continue;
+      }
       
+      
+      stepg += dstep;      
+
+      dstep = -nlldrv/nlldrv2;
+      dllrm = -0.5*nlldrv*nlldrv/nlldrv2;
+
       if (nlldrv2<0.) {
-        stepg = -stepg;
-        //gradient = false;
-      }
+        dstep = -dstep;
+        dllrm = -3.0*dllrm;
+      }     
       
-      dllrg = -0.5*deltaL*deltaL/nlldrv2;      
+      drvstep = 1e-2*dllrm/nlldrv;
       
-      printf("upnllval = %5f, downnllval = %5f, fNLLVal = %5f, maxscale = %5f, drvstep = %5e, nlldrv = %5e, nlldrv2 = %5e, stepg = %5e, dllrg = %5f\n",upnllval,downnllval,fNLLVal,maxscale,drvstep,nlldrv,nlldrv2,stepg,dllrg);
+      printf("upnllval = %5f, downnllval = %5f, nllval = %5f, fNLLVal = %5f, drvstep = %5e, nlldrv = %5e, nlldrv2 = %5e, stepg = %5e, dllrm = %5f\n",upnllval,downnllval,nllval, fNLLVal,drvstep,nlldrv,nlldrv2,stepg,dllrm);
       
+      double nllthreshold = 0.1;
+      if (msize == fFullParms.getSize()) nllthreshold = 1e-4;
       
-      //if ( (nlldrv*deltaL)>0. && ((upnllval-fNLLVal)*(downnllval-fNLLVal))<0.) {
-      if ( (nlldrv*deltaL)>0.) {                
-	break;
-      }
-      
-      //if (nlldrv>=0. || nlldrv2<=0. || !std::isfinite(step) ) {
-      if (!std::isfinite(step) ) {	
-	stepg = 0.1*fShrinkage;
-        //gradient = false;
-	break;
-      }
-      
-      drvstep /= 5.0;
-      
+      if (std::abs(dllrm)<nllthreshold && stepg!=0) break;
+            
     }
     
     dpar = dparg;
