@@ -314,14 +314,14 @@ protected:
 //   typedef double double;  
   
   void BuildQuantiles(int nvars, double sumw);
-  void UpdateTargets(int nvars, double sumw, int itree);
+  void UpdateTargets(int nvars, int selvar);
   void FillDerivatives();
   
   void TrainTree(const std::vector<HybridGBREvent*> &evts, double sumwtotal, HybridGBRTreeD &tree, const int nvars, double transition, int depth, std::vector<std::pair<float,float> > limits, int tgtidx=-1);      
   void BuildLeaf(const std::vector<HybridGBREvent*> &evts, HybridGBRTreeD &tree, int tgtidx);
 
   //void FitResponses(const std::vector<HybridGBREvent*> &evts, double sumwtotal, HybridGBRTreeD &tree);
-  void FitResponses(HybridGBRForestD *forest);  
+  void FitResponses(HybridGBRForestD *forest, int selvar);  
   
   TMatrixD vmultT(const TVectorD &v, const TVectorD &vT) const;
   double vmult(const TVectorD &vT, const TVectorD &v) const;
