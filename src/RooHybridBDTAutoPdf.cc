@@ -3098,7 +3098,7 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForestD *forest, int selvar = -1
       
       if (stepm!=0. || dstep!=0.) {
         nllval = EvalLoss(forest,stepm + dstep,dparm);
-        if (!std::isnormal(nllval)) {
+        if (!std::isnormal(nllval) || !((nllval-fNLLVal)<1e-3)) {
           dstep /= 2.0;
           continue;
         }
@@ -3216,7 +3216,7 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForestD *forest, int selvar = -1
       
       if (stepg!=0. || dstep!=0.) {
         nllval = EvalLoss(forest,stepg + dstep,dparg);
-        if (!std::isnormal(nllval)) {
+        if (!std::isnormal(nllval) || !((nllval-fNLLVal)<1e-3)) {
           dstep /= 2.0;
           continue;
         }
