@@ -3119,8 +3119,10 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForestD *forest, int selvar = -1
       double nlldrv = (upnllval - downnllval)/(2.0*drvstep);
       double nlldrv2 = (upnllval + downnllval - 2.0*nllval)/drvstep/drvstep;      
       
-      if (stepm==0. && dstep==0. && std::abs( (nlldrv-deltaL)/deltaL )>1.2) {
+      //if (stepm==0. && dstep==0. && std::abs( (nlldrv-deltaL)/deltaL )>1.2) {
+      if (stepm==0. && dstep==0. && (nlldrv*deltaL)>0.) {        
         drvstep /= 5.0;
+        printf("drvstep = %5f\n",drvstep);
         continue;
       }
       
@@ -3237,7 +3239,8 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForestD *forest, int selvar = -1
       double nlldrv = (upnllval - downnllval)/(2.0*drvstep);
       double nlldrv2 = (upnllval + downnllval - 2.0*nllval)/drvstep/drvstep;      
       
-      if (stepg==0. && dstep==0. && std::abs( (nlldrv-deltaL)/deltaL )>0.05) {
+      //if (stepg==0. && dstep==0. && std::abs( (nlldrv-deltaL)/deltaL )>0.05) {
+      if (stepm==0. && dstep==0. && (nlldrv*deltaL)>0.) {                
         drvstep /= 5.0;
         continue;
       }
