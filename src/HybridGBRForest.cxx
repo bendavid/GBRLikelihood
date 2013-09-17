@@ -1,5 +1,6 @@
 #include "../interface/HybridGBRForest.h"
 
+ClassImp(HybridGBRForest) 
 
 
 
