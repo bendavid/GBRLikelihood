@@ -20,6 +20,7 @@
 #include "HybridGBRTree.h"
 #include <math.h>
 #include <stdio.h>
+#include "Rtypes.h"
 
   class HybridGBRForest {
 
@@ -45,6 +46,10 @@
       std::vector<double> fInitialResponse;
       //mutable std::vector<double> fResponses;
       std::vector<std::vector<HybridGBRTree> > fTrees;  
+      
+    private:
+
+      ClassDef(HybridGBRForest,2)             
       
   };
 
