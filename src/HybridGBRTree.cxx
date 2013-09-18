@@ -3,6 +3,7 @@
 #include "../interface/HybridGBRTree.h"
 
 
+ClassImp(HybridGBRTree) 
 
 
 //_______________________________________________________________________
