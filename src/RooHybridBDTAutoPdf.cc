@@ -220,7 +220,7 @@ RooNormPdf::RooNormPdf(const RooNormPdf& other, const char* name) :
 Double_t RooNormPdf::evaluate() const
 {
  
-  return _pdf.arg().getVal(_forcednormset);
+  return static_cast<const RooAbsPdf*>(_pdf.absArg())->getNorm(_forcednormset);
   
 }
 
