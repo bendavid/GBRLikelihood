@@ -311,6 +311,18 @@ RooPowerLaw::RooPowerLaw(const char *name, const char *title, RooAbsReal &x, Roo
   _p("p","",this,p)
 {
 
+/*  double xmin = 100.;
+  double xmax = 180.;
+  double omp = 1e-9;
+  double testint = ((gbrmath::fast_pow(xmax,omp)-gbrmath::fast_pow(xmin,omp))*vdt::fast_inv(omp));
+  double testintd = ((pow(xmax,omp)-pow(xmin,omp))/omp);
+
+  double realint1 = vdt::fast_log(xmax)-vdt::fast_log(xmin);
+  double realint2 = vdt::fast_log(xmax)-vdt::fast_log(xmin) + 0.5*omp*(vdt::fast_log(xmax)*vdt::fast_log(xmax)-vdt::fast_log(xmin)*vdt::fast_log(xmin));
+  
+  printf("testint = %10e, testintd = %10e, realint1 = %10e, realint2 = %10e\n",testint,testintd,realint1,realint2);
+  return; */ 
+  
 }
   
   
@@ -351,9 +363,15 @@ Double_t RooPowerLaw::analyticalIntegral(Int_t code, const char* rangeName) cons
   
   double omp = 1.0 + _p;
   
-  
-  return  ((gbrmath::fast_pow(xmax,omp)-gbrmath::fast_pow(xmin,omp))*vdt::fast_inv(omp));
-  
+  if (std::abs(omp)>1e-9) {
+    return  ((gbrmath::fast_pow(xmax,omp)-gbrmath::fast_pow(xmin,omp))*vdt::fast_inv(omp));
+  }
+  else {
+    double logxmax = vdt::fast_log(xmax);
+    double logxmin = vdt::fast_log(xmin);
+    //series expansion for normalization integral around omp=0, precise to O(omp^2)
+    return ( logxmax - logxmin + 0.5*omp*(logxmax*logxmax - logxmin*logxmin) );
+  }
 }
 
 
