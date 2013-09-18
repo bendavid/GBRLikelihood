@@ -2,6 +2,7 @@
 
 #include "../interface/HybridGBRTreeD.h"
 
+ClassImp(HybridGBRTreeD) 
 
 
 

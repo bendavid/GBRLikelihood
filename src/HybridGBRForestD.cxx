@@ -1,6 +1,6 @@
 #include "../interface/HybridGBRForestD.h"
 
-
+ClassImp(HybridGBRForestD) 
 
 
 //_______________________________________________________________________

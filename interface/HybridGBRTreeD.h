@@ -27,6 +27,7 @@
 #include <map>
 #include <stdio.h>
 #include <cmath>
+#include "Rtypes.h"
 
   class HybridGBRTreeD {
 
@@ -64,7 +65,10 @@
 	std::vector<int> fRightIndices;
 	std::vector<double> fResponses;  
         std::vector<std::vector<std::pair<float,float> > > fLimits;
+      
+    private:
 
+      ClassDef(HybridGBRTreeD,2)    
         
   };
 
