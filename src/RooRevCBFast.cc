@@ -2,10 +2,10 @@
 #include <math.h>
 #include "TMath.h"
 
-//#include "../interface/RooDoubleCBFast.h"
+//#include "../interface/RooRevCBFast.h"
 //#include "../interface/RooFermi.h"
 //#include "../interface/RooRelBW.h"
-#include "../interface/RooDoubleCBFast.h"
+#include "../interface/RooRevCBFast.h"
 #include "RooRealVar.h"
 #include "RooRealConstant.h"
 #include "vdt/vdtMath.h"
@@ -13,16 +13,14 @@
 
 using namespace RooFit;
 
- ClassImp(RooDoubleCBFast) 
+ ClassImp(RooRevCBFast) 
 
- RooDoubleCBFast::RooDoubleCBFast(){}
+ RooRevCBFast::RooRevCBFast(){}
 
- RooDoubleCBFast::RooDoubleCBFast(const char *name, const char *title, 
+ RooRevCBFast::RooRevCBFast(const char *name, const char *title, 
                     RooAbsReal& _x,
                     RooAbsReal& _mean,
                     RooAbsReal& _width,
-                    RooAbsReal& _alpha1,
-                    RooAbsReal& _n1,
                     RooAbsReal& _alpha2,
                     RooAbsReal& _n2
                     ) :
@@ -30,42 +28,31 @@ using namespace RooFit;
    x("x","x",this,_x),
    mean("mean","mean",this,_mean),
    width("width","width",this,_width),
-   alpha1("alpha1","alpha1",this,_alpha1),
-   n1("n1","n1",this,_n1),
    alpha2("alpha2","alpha2",this,_alpha2),
    n2("n2","n2",this,_n2)
  { 
  } 
 
 
- RooDoubleCBFast::RooDoubleCBFast(const RooDoubleCBFast& other, const char* name) :  
+ RooRevCBFast::RooRevCBFast(const RooRevCBFast& other, const char* name) :  
    RooAbsPdf(other,name), 
    x("x",this,other.x),
    mean("mean",this,other.mean),
    width("width",this,other.width),
-   alpha1("alpha1",this,other.alpha1),
-   n1("n1",this,other.n1),
    alpha2("alpha2",this,other.alpha2),
    n2("n2",this,other.n2)
 
  { 
  } 
  
- double RooDoubleCBFast::evaluate() const 
+ double RooRevCBFast::evaluate() const 
  { 
    double t = (x-mean)*vdt::fast_inv(width);
    double val = -99.;
-   if(t>-alpha1 && t<alpha2){
+   if(t<alpha2){
      val = vdt::fast_exp(-0.5*t*t);
-   }else if(t<=-alpha1){
-     double alpha1invn1 = alpha1*vdt::fast_inv(n1);
-     val = vdt::fast_exp(-0.5*alpha1*alpha1)*gbrmath::fast_pow(1. - alpha1invn1*(alpha1+t), -n1);
-     
-//      double n1invalpha1 = n1*vdt::fast_inv(fabs(alpha1));
-//      double A1 = gbrmath::fast_pow(n1invalpha1,n1)*vdt::fast_exp(-alpha1*alpha1/2.);
-//      double B1 = n1invalpha1-fabs(alpha1);
-//      val = A1*gbrmath::fast_pow(B1-t,-n1);
-   }else if(t>=alpha2){
+   }
+   else {
      double alpha2invn2 = alpha2*vdt::fast_inv(n2);
      val = vdt::fast_exp(-0.5*alpha2*alpha2)*gbrmath::fast_pow(1. - alpha2invn2*(alpha2-t), -n2);     
      
@@ -76,10 +63,10 @@ using namespace RooFit;
    }//else{
      //cout << "ERROR evaluating range..." << endl;
      
-   if (!std::isnormal(val)) {
-     printf("bad val: x = %5f, t = %5f, mean = %5f, sigma = %5f, alpha1 = %5f, n1 = %5f, alpha2 = %5f, n2 = %5f\n",double(x), t, double(mean),double(width),double(alpha1),double(n1),double(alpha2), double(n2));
-     printf("val = %5f\n",val);
-   }
+//    if (!std::isnormal(val)) {
+//      printf("bad val: x = %5f, t = %5f, mean = %5f, sigma = %5f, alpha2 = %5f, n2 = %5f\n",double(x), t, double(mean),double(width),double(alpha2), double(n2));
+//      printf("val = %5f\n",val);
+//    }
      
    return val;
    //return std::max(double(std::numeric_limits<float>::min()),val);
@@ -88,13 +75,13 @@ using namespace RooFit;
     
  } 
 
- Int_t RooDoubleCBFast::getAnalyticalIntegral(RooArgSet& allVars, RooArgSet& analVars, const char* range) const 
+ Int_t RooRevCBFast::getAnalyticalIntegral(RooArgSet& allVars, RooArgSet& analVars, const char* range) const 
  {
    if (matchArgs(allVars,analVars,x)) return 1;
    return 0;
  }
 
- Double_t RooDoubleCBFast::analyticalIntegral(Int_t code, const char* rangeName) const 
+ Double_t RooRevCBFast::analyticalIntegral(Int_t code, const char* rangeName) const 
  {
    assert(code==1) ;
  
@@ -111,7 +98,7 @@ using namespace RooFit;
  
    static const double rootPiBy2 = sqrt(atan2(0.0,-1.0)/2.0);
    static const double invRoot2 = 1.0/sqrt(2);   
-   
+ 
    double invwidth = vdt::fast_inv(width);
    
    double tmin = (xmin-mean)*invwidth;
@@ -120,51 +107,14 @@ using namespace RooFit;
    bool isfullrange = (tmin<-1000. && tmax>1000.);
    
    //compute gaussian contribution
-   double central_low =std::max(xmin,mean - alpha1*width );
+   double central_low = xmin;
    double central_high=std::min(xmax,mean + alpha2*width );
-   
-   double tcentral_low = (central_low-mean)*invwidth;
-   double tcentral_high = (central_high-mean)*invwidth;
    if(central_low < central_high)  {// is the gaussian part in range?
+     double tcentral_low = tmin;
+     double tcentral_high = (central_high-mean)*invwidth;     
      central = rootPiBy2*width*(TMath::Erf(tcentral_high*invRoot2)-TMath::Erf(tcentral_low*invRoot2));
    }
-   //compute left tail;
-   if (isfullrange  && (n1-1.0)>1.e-5) {
-    left = width*vdt::fast_exp(-0.5*alpha1*alpha1)*n1*vdt::fast_inv(alpha1*(n1-1.)); 
-   }
-   else {
-  
-    double left_low=xmin;
-    double left_high=std::min(xmax,mean - alpha1*width);
-    double thigh = (left_high-mean)*invwidth;
-    
-    if(left_low < left_high){ //is the left tail in range?
-     double n1invalpha1 = n1*vdt::fast_inv(fabs(alpha1));
-      if(fabs(n1-1.0)>1.e-5) {
-	double invn1m1 = vdt::fast_inv(n1-1.);
-	double leftpow = gbrmath::fast_pow(n1invalpha1,-n1*invn1m1);
-	double left0 = width*vdt::fast_exp(-0.5*alpha1*alpha1)*invn1m1;
-	double left1, left2;
-	
-	if (xmax>(mean-alpha1*width)) left1 = n1invalpha1;
-	else left1 = gbrmath::fast_pow( leftpow*(n1invalpha1 - alpha1 - thigh), 1.-n1);
-	
-	if (tmin<-1000.) left2 = 0.;
-	else left2 = gbrmath::fast_pow( leftpow*(n1invalpha1 - alpha1 - tmin ), 1.-n1);
-	
-	left = left0*(left1-left2);
-	
-	//left = width*vdt::fast_exp(-0.5*alpha1*alpha1)*invn1m1*(n1invalpha1 -  gbrmath::fast_pow( gbrmath::fast_pow(n1invalpha1,-n1*invn1m1)*(n1invalpha1 - alpha1 - tmin), 1.-n1)) ;
-	//left = width*vdt::fast_exp(-0.5*alpha1*alpha1)*invn1m1*(n1invalpha1 -  gbrmath::fast_pow( gbrmath::fast_pow(n1invalpha1,-n1*invn1m1)*(n1invalpha1 - alpha1 - tmin), 1.-n1)) ;
-	//left = A1*vdt::fast_inv(-n1+1.0)*width*(gbrmath::fast_pow(B1-(left_low-mean)*invwidth,-n1+1.)-gbrmath::fast_pow(B1-(left_high-mean)*invwidth,-n1+1.));
-      }
-      else {
-	double A1 = gbrmath::fast_pow(n1invalpha1,n1)*vdt::fast_exp(-0.5*alpha1*alpha1);
-	double B1 = n1invalpha1-fabs(alpha1);	
-	left = A1*width*(vdt::fast_log(B1-(left_low-mean)*invwidth) - vdt::fast_log(B1-(left_high-mean)*invwidth) );
-      }
-    }
-   }
+ 
  
    //compute right tail;
    if (isfullrange && (n2-1.0)>1.e-5) {
@@ -205,7 +155,7 @@ using namespace RooFit;
    
    //if (!std::isnormal(left) || !std::isnormal(central) || !std::isnormal(right)) {
    if (!std::isnormal(sum)) {
-     printf("bad int: mean = %5f, sigma = %5f, alpha1 = %5f, n1 = %5f, alpha2 = %5f, n2 = %5f\n",double(mean),double(width),double(alpha1),double(n1),double(alpha2), double(n2));
+     printf("bad int: mean = %5f, sigma = %5f, alpha2 = %5f, n2 = %5f\n",double(mean),double(width),double(alpha2), double(n2));
      //printf("left = %5f, central = %5f, right = %5f, A1 = %5f, B1 = %5f, A2 = %5f, B2 = %5f, integral = %5f\n",left,central,right,A1,B1,A2,B2,left+central+right);
      printf("left = %5f, central = %5f, right = %5f, integral = %5f\n",left,central,right,sum);
    }

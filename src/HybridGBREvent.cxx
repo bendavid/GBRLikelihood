@@ -3,7 +3,7 @@
 //_______________________________________________________________________
 HybridGBREvent::HybridGBREvent(int nvars, int ntargets, int nparms) : 
   fVars(new float[nvars]),
-  fTargets(new float[ntargets]),
+  fTargets(new double[ntargets]),
   fTransTargets(new float[ntargets]),
   fTransTargets2(new float[ntargets]),
   fQuantiles(new int[nvars]),
