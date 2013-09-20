@@ -63,10 +63,10 @@ using namespace RooFit;
    }//else{
      //cout << "ERROR evaluating range..." << endl;
      
-   if (!std::isnormal(val)) {
-     printf("bad val: x = %5f, t = %5f, mean = %5f, sigma = %5f, alpha2 = %5f, n2 = %5f\n",double(x), t, double(mean),double(width),double(alpha2), double(n2));
-     printf("val = %5f\n",val);
-   }
+//    if (!std::isnormal(val)) {
+//      printf("bad val: x = %5f, t = %5f, mean = %5f, sigma = %5f, alpha2 = %5f, n2 = %5f\n",double(x), t, double(mean),double(width),double(alpha2), double(n2));
+//      printf("val = %5f\n",val);
+//    }
      
    return val;
    //return std::max(double(std::numeric_limits<float>::min()),val);
