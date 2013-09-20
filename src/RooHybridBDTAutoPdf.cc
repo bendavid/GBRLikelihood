@@ -46,7 +46,7 @@
 #include "TMath.h"
 #include <Math/QuantFuncMathCore.h>
 #include <Math/ProbFunc.h>
-#include "../interface/HybridGBRForest.h"
+#include "../interface/HybridGBRForestD.h"
 #include "TMatrixDSym.h"
 #include "TVectorD.h"
 #include "TDecompChol.h"
@@ -69,6 +69,8 @@
 #include <stdlib.h>
 #include <malloc.h>
 #include "../interface/GBRArrayUtils.h"
+#include "../interface/GBRMath.h"
+
 
 ClassImp(RooTreeConvert)
 
@@ -101,7 +103,7 @@ RooDataSet *RooTreeConvert::CreateDataSet(std::string name, TTree *tree, std::ve
     if (iev%100000==0) printf("%i\n",int(iev));
     tree->LoadTree(iev);
     
-    float weight = cutform.EvalInstance();
+    double weight = cutform.EvalInstance();
     
     if (weight==0.) continue; //skip events with 0 weight
     
@@ -165,7 +167,7 @@ RooDataSet *RooTreeConvert::CreateDataSet(std::string name, TTree *tree, RooArgL
       }
     }
     
-    float weight = cutform.EvalInstance();
+    double weight = cutform.EvalInstance();
     
     if (weight==0.) continue; //skip events with 0 weight
     
@@ -194,6 +196,35 @@ RooDataSet *RooTreeConvert::CreateDataSet(std::string name, TTree *tree, RooArgL
 }
 
 
+ClassImp(RooNormPdf)
+
+RooNormPdf::RooNormPdf(const char *name, const char *title, RooAbsPdf &pdf, const RooArgSet &forcednormset) :
+  RooAbsReal(name,title),
+  _pdf("pdf","",this,pdf),
+  _forcednormset("forcednormset","",this)
+{
+
+  _forcednormset.add(forcednormset);
+  
+}
+  
+  
+RooNormPdf::RooNormPdf(const RooNormPdf& other, const char* name) :
+  RooAbsReal(other,name),
+  _pdf("pdf",this,other._pdf),
+  _forcednormset("pdf",this,other._forcednormset)
+{
+  
+}
+
+Double_t RooNormPdf::evaluate() const
+{
+ 
+  return static_cast<const RooAbsPdf*>(_pdf.absArg())->getNorm(_forcednormset);
+  
+}
+
+
 ClassImp(RooRealConstraint)
 
 RooRealConstraint::RooRealConstraint(const char *name, const char *title, RooAbsReal &real, double low, double high) :
@@ -205,15 +236,21 @@ RooRealConstraint::RooRealConstraint(const char *name, const char *title, RooAbs
   _offset(_low + 0.5*(_high-_low))
 {
 
-  RooGBRTarget *var = dynamic_cast<RooGBRTarget*>(&real);
+  RooGBRTarget *tgt = dynamic_cast<RooGBRTarget*>(&real);
+  RooRealVar *var = 0;
+  
+  
+  if (tgt) var = tgt->Var();
+  else var = dynamic_cast<RooRealVar*>(&real);
+  
   
   if (var) {
-    double oldval = var->Var()->getVal();
+    double oldval = var->getVal();
     double newval = asin(2.0*(oldval-_low)/(_high-_low)-1.0);
     //double newval = atanh( (oldval - _offset)/_scale );
     //double newval = -log(_scale/(oldval-_low) - 1.0);
     //double newval = tan( (oldval - _offset)/_scale );
-    var->Var()->setVal(newval);
+    var->setVal(newval);
     
     printf("oldval = %f, newval = %5f, evaluate = %5f\n",oldval,newval,evaluate());
   }
@@ -274,6 +311,18 @@ RooPowerLaw::RooPowerLaw(const char *name, const char *title, RooAbsReal &x, Roo
   _p("p","",this,p)
 {
 
+/*  double xmin = 100.;
+  double xmax = 180.;
+  double omp = 1e-9;
+  double testint = ((gbrmath::fast_pow(xmax,omp)-gbrmath::fast_pow(xmin,omp))*vdt::fast_inv(omp));
+  double testintd = ((pow(xmax,omp)-pow(xmin,omp))/omp);
+
+  double realint1 = vdt::fast_log(xmax)-vdt::fast_log(xmin);
+  double realint2 = vdt::fast_log(xmax)-vdt::fast_log(xmin) + 0.5*omp*(vdt::fast_log(xmax)*vdt::fast_log(xmax)-vdt::fast_log(xmin)*vdt::fast_log(xmin));
+  
+  printf("testint = %10e, testintd = %10e, realint1 = %10e, realint2 = %10e\n",testint,testintd,realint1,realint2);
+  return; */ 
+  
 }
   
   
@@ -291,7 +340,7 @@ Double_t RooPowerLaw::evaluate() const
  
   //const RooArgSet* nset = _normSet ;  
   
-  return pow(_x,_p);
+  return gbrmath::fast_pow(_x,_p);
     
 }
 
@@ -314,9 +363,15 @@ Double_t RooPowerLaw::analyticalIntegral(Int_t code, const char* rangeName) cons
   
   double omp = 1.0 + _p;
   
-  
-  return  ((pow(xmax,omp)-pow(xmin,omp))/omp);
-  
+  if (std::abs(omp)>1e-9) {
+    return  ((gbrmath::fast_pow(xmax,omp)-gbrmath::fast_pow(xmin,omp))*vdt::fast_inv(omp));
+  }
+  else {
+    double logxmax = vdt::fast_log(xmax);
+    double logxmin = vdt::fast_log(xmin);
+    //series expansion for normalization integral around omp=0, precise to O(omp^2)
+    return ( logxmax - logxmin + 0.5*omp*(logxmax*logxmax - logxmin*logxmin) );
+  }
 }
 
 
@@ -485,7 +540,7 @@ ClassImp(RooGBRFunction)
 RooGBRFunction::RooGBRFunction(const char *name, const char *title, const RooArgList &vars, int ntargets) :
   RooAbsReal(name,title),
   _vars("vars","",this),
-  _forest(new HybridGBRForest(ntargets)),
+  _forest(new HybridGBRForestD(ntargets)),
   _eval(vars.getSize())
 {
   _vars.add(vars);
@@ -495,7 +550,7 @@ RooGBRFunction::RooGBRFunction(const char *name, const char *title, const RooArg
 RooGBRFunction::RooGBRFunction(const RooGBRFunction& other, const char* name) :
   RooAbsReal(other,name), 
   _vars("vars",this,other._vars),  
-  _forest(new HybridGBRForest(*other._forest)),
+  _forest(new HybridGBRForestD(*other._forest)),
   _eval(other._eval)
 {
   
@@ -508,7 +563,7 @@ RooGBRFunction::~RooGBRFunction()
 }
   
 //_____________________________________________________________________________  
-float RooGBRFunction::GetResponse(int itgt) const {
+double RooGBRFunction::GetResponse(int itgt) const {
   
   //printf("RooGBRFunction::GetResponse(%i)\n",itgt);
 //   if (isValueDirtyAndClear()) {
@@ -535,7 +590,7 @@ float RooGBRFunction::GetResponse(int itgt) const {
 }
 
 //_____________________________________________________________________________  
-void RooGBRFunction::SetForest(HybridGBRForest *forest) {
+void RooGBRFunction::SetForest(HybridGBRForestD *forest) {
  
   if (_forest) delete _forest;
   _forest = forest;
@@ -627,7 +682,8 @@ RooHybridBDTAutoPdf::RooHybridBDTAutoPdf(const char *name, const char *title, Ro
   fGraphDelta(0),
   //fLambda(new RooRealVar("lambda","",0.)),
   fMinEvents(-99),  
-  fMinWeights(std::vector<double>(data.size(),1000.)),
+  //fMinWeights(std::vector<double>(data.size(),1000.)),
+  fMinWeightTotal(-99.),
   fShrinkage(0.5),
   fNTrees(20),
   fNQuantiles(std::numeric_limits<unsigned short>::max()+1),
@@ -1102,9 +1158,10 @@ void RooHybridBDTAutoPdf::SetMinCutSignificance(double x) {
   
 }
 
-void RooHybridBDTAutoPdf::UpdateTargets(int nvars, double sumw, int itree) {
+void RooHybridBDTAutoPdf::UpdateTargets(int nvars, int selvar = -1) {
  
   //printf("UpdateTargets\n");
+  
   
 //  int tgtidx = itree%fNTargets;
   
@@ -1112,20 +1169,6 @@ void RooHybridBDTAutoPdf::UpdateTargets(int nvars, double sumw, int itree) {
   for (unsigned int iev=0; iev<fEvts.size(); ++iev) {
     
     int ithread =  omp_get_thread_num();
-    //int ithread =  0;
-    
-  //for (unsigned int iev=0; iev<1; ++iev) {
-      
-    //printf("iev = %i\n",iev);
-//     for (int ivar=0; ivar<nvars; ++ivar) {     
-//       double var = fEvts.at(iev)->Var(ivar);
-//       fEvalVector[ivar] = var;      
-//     }
-//     fForest->GetResponse(&fEvalVector[0]);
-//     
-//     for (int itgt=0; itgt<fForest->NTargets(); ++itgt) {
-//       fEvts.at(iev)->SetTarget(itgt,fForest->GetResponse(itgt));
-//     }
     
     for (int ivar=0; ivar<fCondVars.getSize(); ++ivar) {
       static_cast<RooRealVar*>(fCondVarsClones[ithread].at(ivar))->setVal(fEvts.at(iev)->Var(ivar));
@@ -1138,280 +1181,61 @@ void RooHybridBDTAutoPdf::UpdateTargets(int nvars, double sumw, int itree) {
       static_cast<RooRealVar*>(fStaticTgtsClones[ithread].at(itgt))->setVal(fEvts.at(iev)->Target(itgt));
     }
     
-    
-//     fStaticPdfs.at(0)->Print("V");
-//     fStaticPdfs.at(0)->getComponents()->Print("V");
-//     
-//     fDerivatives[0][fExtVars.getSize()+0]->Print("V");
-//     fDerivatives[0][fExtVars.getSize()+0]->getComponents()->Print("V");
-    
     int evcls = fEvts.at(iev)->Class();
     double pdfval = fEvts.at(iev)->PdfVal();
-    //double invpdf = 1.0/pdfval;
+    
     double invpdf = vdt::fast_inv(pdfval);
-    //float invpdf = vdt::fast_invf(pdfval);
     double invpdfsq = invpdf*invpdf;
     double weight = fEvts.at(iev)->Weight();
-    
-    //derivatives for pdfs
-    //for (int itgt=0; itgt<fNTargets; ++itgt) {
       
     for (int itgt=0; itgt<fNTargets; ++itgt) {
       fEvts.at(iev)->SetTransTarget(itgt,0.);
       fEvts.at(iev)->SetTransTarget2(itgt,0.);
     }      
-      
-    //if (itree<fFullParms.getSize()) {
-    //if (1) {
-      
-      
-      for (unsigned int iidx=0; iidx<fOuterIndices[evcls].size(); ++iidx) {
-	
-	int ivar = fOuterIndices[evcls][iidx];
-	int itgt = ivar - fExtVars.getSize();
-	
-	RooRealVar *var = static_cast<RooRealVar*>(fFullParmsClones[ithread].at(ivar));
-        double startval = var->getVal();
-        double step = 1e-3*var->getError();
-        
-        RooAbsReal *func = static_cast<RooAbsReal*>(fStaticPdfsClones[ithread].at(evcls));
-        
-        var->setVal(startval + step);
-        double upval = func->getValV(&fParmSetClones[ithread]);
-        
-        var->setVal(startval - step);
-        double downval = func->getValV(&fParmSetClones[ithread]);
-        
-        var->setVal(startval);
-        
-        double drvval = (upval-downval)*vdt::fast_inv(2.0*step);
-        
-        
-	//double drvval = Derivative1Fast(static_cast<RooAbsReal*>(fStaticPdfsClones[ithread].at(evcls)),pdfval,static_cast<RooRealVar*>(fFullParmsClones[ithread].at(ivar)),&fParmSetClones[ithread],1e-3*static_cast<RooRealVar*>(fFullParmsClones[ithread].at(ivar))->getError());
-	//double drvval = Derivative1(static_cast<RooAbsReal*>(fStaticPdfs.at(evcls)),static_cast<RooRealVar*>(fFullParms.at(ivar)),&parmset,1e-3*static_cast<RooRealVar*>(fFullParms.at(ivar))->getError());
-	
-	
-//	double drvval = Derivative1(static_cast<RooAbsReal*>(fStaticPdfs.at(evcls)),static_cast<RooRealVar*>(fFullParms.at(ivar)),&parmset,1e-3*static_cast<RooRealVar*>(fFullParms.at(ivar))->getError());
-	//double drvval = Derivative1Fast(static_cast<RooAbsReal*>(fStaticPdfs.at(evcls)),pdfval,static_cast<RooRealVar*>(fFullParms.at(ivar)),&parmset,1e-3*static_cast<RooRealVar*>(fFullParms.at(ivar))->getError());
-	fEvts.at(iev)->SetDerivative(ivar,drvval);
-	//fEvts.at(iev)->SetDerivative2(ivar,drv2val);
-	
-	if (itgt<0) continue;	
-	
-	//double drv2val = Derivative2Fast(static_cast<RooAbsReal*>(fStaticPdfsClones[ithread].at(evcls)),pdfval,static_cast<RooRealVar*>(fFullParmsClones[ithread].at(ivar)),&fParmSetClones[ithread],1e-3*static_cast<RooRealVar*>(fFullParmsClones[ithread].at(ivar))->getError());
-	
-        double drv2val = (upval + downval - 2.0*pdfval)*vdt::fast_inv(step*step);
 
-	fEvts.at(iev)->SetDerivative2(ivar,drv2val);
-
-//         for (unsigned int jidx=iidx+1; jidx<fOuterIndices[evcls].size(); ++jidx) {
-//           int jvar = fOuterIndices[evcls][jidx];
-//           double drv2ij = Derivative2Fast(static_cast<RooAbsReal*>(fStaticPdfsClones[ithread].at(evcls)),static_cast<RooRealVar*>(fFullParmsClones[ithread].at(ivar)),static_cast<RooRealVar*>(fFullParmsClones[ithread].at(jvar)),&fParmSetClones[ithread],1e-3*static_cast<RooRealVar*>(fFullParmsClones[ithread].at(ivar))->getError(),1e-3*static_cast<RooRealVar*>(fFullParmsClones[ithread].at(jvar))->getError());
-//           
-//           fEvts.at(iev)->ParmMatrix()(ivar,jvar) = drv2ij;
-//           
-//         }
-        
-       // if (itgt<0) continue;   
-
-
-	
-	//double drv2val = Derivative2(static_cast<RooAbsReal*>(fStaticPdfs.at(evcls)),static_cast<RooRealVar*>(fFullParms.at(ivar)),&parmset,1e-3*static_cast<RooRealVar*>(fFullParms.at(ivar))->getError());
-	
-	//fEvts.at(iev)->SetTransTarget(itgt,fDerivatives[evcls][fExtVars.getSize()+itgt]->getVal()/static_cast<RooAbsReal*>(fStaticPdfs.at(evcls))->getValV(&parmset));
-	
-	//printf("evcls = %i, itgt = %i, drv = %5f, val = %5f\n",evcls,itgt, Derivative1(static_cast<RooAbsReal*>(fStaticPdfs.at(evcls)),static_cast<RooRealVar*>(fStaticTgts.at(itgt)),&parmset),static_cast<RooAbsReal*>(fStaticPdfs.at(evcls))->getValV(&parmset));
-	
-  //      fEvts.at(iev)->SetTransTarget(itgt,(1.0+fLambda->getVal())*Derivative1(static_cast<RooAbsReal*>(fStaticPdfs.at(evcls)),static_cast<RooRealVar*>(fStaticTgts.at(itgt)),&parmset,1e-3*static_cast<RooRealVar*>(fStaticTgts.at(itgt))->getError())/static_cast<RooAbsReal*>(fStaticPdfs.at(evcls))->getValV(&parmset));
-	
-	fEvts.at(iev)->SetTransTarget(itgt,-weight*drvval*invpdf);
-	fEvts.at(iev)->SetTransTarget2(itgt,-weight*drv2val*invpdf + weight*drvval*drvval*invpdfsq);
-
-	
-	//fEvts.at(iev)->SetTransTarget(itgt,1.0/static_cast<RooAbsReal*>(fStaticPdfs.at(evcls))->getValV(&parmset));
-      }
-      
-//       for (unsigned int iidx=0; iidx<fOuterIndices[evcls].size(); ++iidx) {
-// 	
-// 	int ivar = fOuterIndices[evcls][iidx];
-// 	int itgt = ivar - fExtVars.getSize();
-// 	
-// 	if (itgt<0) continue;
-// 	
-// 	double drvi = fEvts.at(iev)->Derivative(ivar);
-// 	
-// 	fEvts.at(iev)->ValVector()(itgt) = -drvi*invpdf;
-// 	
-// 	for (unsigned int jidx=iidx; jidx<fOuterIndices[evcls].size(); ++jidx) {
-// 	
-// 	  int jvar = fOuterIndices[evcls][iidx];
-// 	  int jtgt = jvar - fExtVars.getSize();
-// 	  
-// 	  if (jtgt<0) continue;
-// 	  
-//        	  double drvj = fEvts.at(iev)->Derivative(jvar);
-// 
-// 	  fEvts.at(iev)->ParmMatrix()(itgt,jtgt) = drvi*drvj*invpdfsq;
-// 	}
-// 	
-//       }
-//       
-//       for (int iel=0; iel<fNTargets; ++iel) {
-// 	for (int jel=0; jel<iel; ++jel) {
-// 	  fEvts.at(iev)->ParmMatrix()(iel,jel) = fEvts.at(iev)->ParmMatrix()(jel,iel);
-// 	}
-//       }
-      
-      
-    //}
-//     else {
-//       for (int iidx=0; iidx<fFullParms.getSize(); ++iidx) {
-// 	valv(iidx) = pdfval;
-// 	for (int jidx=0; jidx<fFullParms.getSize(); ++jidx) {
-// 	  parmm(iidx,jidx) = static_cast<RooRealVar*>(fFullParms.at(jidx))->getVal();
-// 	}
-//       }
-//       
-//       parmm -= fEvts.at(iev)->ParmMatrix();
-//       valv -= fEvts.at(iev)->ValVector();
-//       
-//       TDecompLU dbk(parmm);
-//       dbk.Solve(valv);
-//       
-//       for (unsigned int iidx=0; iidx<fOuterIndices[evcls].size(); ++iidx) {
-// 	
-// 	int ivar = fOuterIndices[evcls][iidx];
-// 	int itgt = ivar - fExtVars.getSize();
-// 	
-// 	
-// 	double drvval = valv(ivar);
-// 
-// 	fEvts.at(iev)->SetDerivative(ivar,drvval);
-// 	
-// 	if (itgt<0) continue;
-// 	
-// 	
-// 	fEvts.at(iev)->SetTransTarget(itgt,drvval/pdfval);
-// 
-// 	
-//       }      
-//       
-//     }
+    for (int ivar=0; ivar<fFullFuncs.getSize(); ++ivar) {
+      fEvts.at(iev)->SetDerivative(ivar,0.);
+      fEvts.at(iev)->SetDerivative2(ivar,0.);
+    }          
     
-/*    if (pointidx>=0) {
-      fEvts.at(iev)->ValVector()(pointidx) = pdfval;
-      for (int iparm=0; iparm<fFullParms.getSize(); ++iparm) {
-	fEvts.at(iev)->ParmMatrix()(pointidx,iparm) = static_cast<RooRealVar*>(fFullParms.at(iparm))->getVal();
-      }
-    } */   
+    for (unsigned int iidx=0; iidx<fOuterIndices[evcls].size(); ++iidx) {
+      
+      int ivar = fOuterIndices[evcls][iidx];
+      if (selvar>=0 && ivar!=selvar) continue;
+      
+      int itgt = ivar - fExtVars.getSize();
+      
+      RooRealVar *var = static_cast<RooRealVar*>(fFullParmsClones[ithread].at(ivar));
+      double startval = var->getVal();
+      //double step = 1e-3*var->getError();
+      double step = 1e-3*var->getError();
+      
+      RooAbsReal *func = static_cast<RooAbsReal*>(fStaticPdfsClones[ithread].at(evcls));
+      
+      var->setVal(startval + step);
+      double upval = func->getValV(&fParmSetClones[ithread]);
+      
+      var->setVal(startval - step);
+      double downval = func->getValV(&fParmSetClones[ithread]);
+      
+      var->setVal(startval);
+      
+      double drvval = (upval-downval)*vdt::fast_inv(2.0*step);
+      
 
+      fEvts.at(iev)->SetDerivative(ivar,drvval);
+      
+      
+      double drv2val = (upval + downval - 2.0*pdfval)*vdt::fast_inv(step*step);
+      fEvts.at(iev)->SetDerivative2(ivar,drv2val);
+      
+      if (itgt<0) continue;   
+      
+      fEvts.at(iev)->SetTransTarget(itgt,-weight*drvval*invpdf);
+      fEvts.at(iev)->SetTransTarget2(itgt,-weight*drv2val*invpdf + weight*drvval*drvval*invpdfsq);
 
-    
-//     double normden = 1.0;
-//     for (int ipdf=1; ipdf<fStaticPdfs.getSize(); ++ipdf) {
-//       int itgt = ipdf - 1;
-//       int ivar = fExtVars.getSize() + itgt;
-//       double expF = exp(fEvts.at(iev)->Target(itgt));
-//         
-//       normden += expF;
-//     }
-//     double invnormden = 1.0/normden;
-//     double invnormdensq = invnormden*invnormden;
-// 
-//     for (int ipdf=1; ipdf<fStaticPdfs.getSize(); ++ipdf) {
-//       int itgt = ipdf - 1;
-//       int ivar = fExtVars.getSize() + itgt;
-//       double expF = exp(fEvts.at(iev)->Target(itgt));
-//      
-//       if (ipdf==evcls) {
-//         fEvts.at(iev)->SetTransTarget(itgt,fEvts.at(iev)->TransTarget(itgt) - 1.0);
-//       }
-//       
-//       fEvts.at(iev)->SetTransTarget(itgt,fEvts.at(iev)->TransTarget(itgt) + invnormden*expF);
-//       fEvts.at(iev)->SetTransTarget2(itgt,fEvts.at(iev)->TransTarget2(itgt) + invnormden*expF - invnormdensq*expF*expF);
-//     }
-
-
-    //normalization terms
-/*    if (evcls==0) {
-      for (int ipdf=1; ipdf<fStaticPdfs.getSize(); ++ipdf) {
-	int itgt = ipdf - 1;
-	int ivar = fExtVars.getSize() + itgt;
-	double nexpF = exp(-fEvts.at(iev)->Target(itgt));
-// 	fEvts.at(iev)->SetTransTarget(itgt,fEvts.at(iev)->TransTarget(itgt) - nexpF/fN0Obs);
-// 	fEvts.at(iev)->SetTransTarget2(itgt,fEvts.at(iev)->TransTarget2(itgt) + nexpF/fN0Obs);
-	fEvts.at(iev)->SetTransTarget(itgt,fEvts.at(iev)->TransTarget(itgt) - nexpF);
-	fEvts.at(iev)->SetTransTarget2(itgt,fEvts.at(iev)->TransTarget2(itgt) + nexpF);	
-      }
+      
     }
-    else {
-      int itgt = evcls - 1;
-      int ivar = fExtVars.getSize() + itgt;
-      fEvts.at(iev)->SetTransTarget(itgt,fEvts.at(iev)->TransTarget(itgt) + 1.0);
-    } */   
-    
-    
-//     for (int itgt=0; itgt<fNTargets; ++itgt) {
-//       printf("itgt = %i, transtgt = %5f\n",itgt,fEvts.at(iev)->TransTarget(itgt));
-//     }
-    
-//     //normalization terms
-//     if (evcls==0) {
-//       
-//       
-//       
-//       dcoeffs[0] = fN0->getVal();
-//       for (int ipdf=1; ipdf<fStaticPdfs.getSize(); ++ipdf) {
-// 	int itgt = ipdf - 1;
-//         dcoeffs[ipdf] = fR->getVal()*exp(-fEvts.at(iev)->Target(itgt));
-// 	dcoeffs[0] -= dcoeffs[ipdf];
-//       }
-//       
-//       double ntimesd = dcoeffs[0]*static_cast<RooAbsReal*>(fStaticPdfs.at(0))->getValV(&parmset));
-//       for (int ipdf=1; ipdf<fStaticPdfs.getSize(); ++ipdf) {
-// 	ntimesd + dcoeffs[ipdf]*static_cast<RooAbsReal*>(fStaticPdfs.at(ipdf))->getValV(&parmset));
-//       }
-//       
-//       for (int itgt=fStaticPdfs.getSize()-1; itgt<fNTargets; ++itgt) {
-// 	fEvts.at(iev)->SetTransTarget(itgt,0.);
-// 	for (int ipdf=1; ipdf<fStaticPdfs.getSize(); ++ipdf) {
-// 	  fEvts.at(iev)->SetTransTarget(itgt, fEvts.at(iev)->TransTarget(itgt) +  dcoeffs[ipdf]*fDerivatives[evcls][fExtVars.getSize()+itgt]->getVal()/static_cast<RooAbsReal*>(fStaticPdfs.at(evcls))->getValV(&parmset));	
-// 	}
-//       }
-// 
-//       for (int ipdf=1; ipdf<fStaticPdfs.getSize(); ++ipdf) {
-// 	int itgt = ipdf - 1;
-// 	double nexpF = exp(-fEvts.at(iev)->Target(itgt));
-// 	fEvts.at(iev)->SetTransTarget(itgt,fEvts.at(iev)->TransTarget(itgt) + nexpF/fN0Obs);
-//       }
-//     }
-//     else {
-//       int itgt = evcls - 1;
-//       fEvts.at(iev)->SetTransTarget(itgt,fEvts.at(iev)->TransTarget(itgt) - 1.0);
-//     }
-    
-    
-//     if ( fEvts.at(iev)->Class()==0 ) {
-//       //double ntimesd = ((ns/nd)*nexpF*sigpdf->getValV(&parmset)+ (1.0-(ns/nd)*nexpF)*bkgpdf->getValV(&parmset));
-//        double ntimesd = ns*nexpF*sigpdf->getValV(&parmset)+ (nd-ns*nexpF)*bkgpdf->getValV(&parmset); 
-// 
-// 
-//       //fEvts.at(iev)->SetTransTarget(0,(-ns*nexpF*fSigPdf->getValV(&parmset)+ns*nexpF*fBkgPdf->getValV(&parmset))/ntimesd + nexpF);
-//       //fEvts.at(iev)->SetTransTarget(0,(-(ns)*nexpF*sigpdf->getValV(&parmset)+(ns)*nexpF*bkgpdf->getValV(&parmset))/ntimesd + (nd/fNDataObs)*nexpF);
-//       fEvts.at(iev)->SetTransTarget(0,(-ns*nexpF*sigpdf->getValV(&parmset) + ns*expF*bkgpdf->getValV(&parmset))/ntimesd + (1.0/fNDataObs)*nexpF);
-//       //fEvts.at(iev)->SetTransTarget(0,(-(ns)*nexpF*sigpdf->getValV(&parmset)+(ns)*nexpF*bkgpdf->getValV(&parmset))/ntimesd);
-//       fEvts.at(iev)->SetTransTarget(1,ns*nexpF*dsig->getVal()/ntimesd);
-//       fEvts.at(iev)->SetTransTarget(2,(nd-ns*nexpF)*dbkg->getVal()/ntimesd);
-//       //fEvts.at(iev)->SetTransTarget(3,-1.0);      
-//     }
-//     else if ( fEvts.at(iev)->Class()==1 ) {
-//       fEvts.at(iev)->SetTransTarget(0,-1.0);
-//       fEvts.at(iev)->SetTransTarget(1,dsig->getVal()/sigpdf->getValV(&parmset));
-//       fEvts.at(iev)->SetTransTarget(2, 0.0);
-//       //fEvts.at(iev)->SetTransTarget(3,-1.0);      
-//     }
-  
-
     
   }  
   
@@ -1468,7 +1292,7 @@ void RooHybridBDTAutoPdf::BuildQuantiles(int nvars, double sumw) {
 }
 
 
-const HybridGBRForest *RooHybridBDTAutoPdf::TrainForest(int ntrees, bool reuseforest) {
+const HybridGBRForestD *RooHybridBDTAutoPdf::TrainForest(int ntrees, bool reuseforest) {
 
   for (int ithread=0; ithread<fNThreads; ++ithread) {
     static_cast<RooAbsReal*>(fClones.at(ithread))->getValV(&fParmSetClones[ithread]);
@@ -1507,12 +1331,12 @@ const HybridGBRForest *RooHybridBDTAutoPdf::TrainForest(int ntrees, bool reusefo
   RooArgSet cvarset(fCondVars);
 
   
-  HybridGBRForest *forest  = 0;
+  HybridGBRForestD *forest  = 0;
   if (reuseforest) {
     forest = fFunc->Forest();
   }
   else {
-    forest = new HybridGBRForest(fFunc->Forest()->NTargets());
+    forest = new HybridGBRForestD(fFunc->Forest()->NTargets());
   }
   
   
@@ -1585,6 +1409,9 @@ const HybridGBRForest *RooHybridBDTAutoPdf::TrainForest(int ntrees, bool reusefo
   
   TVectorD dparnull(fFullParms.getSize());
   fNLLVal = EvalLoss(forest,0.,dparnull);
+
+  printf("fullparms:\n");
+  fFullParms.Print("V");
   
   //loop over requested number of trees
   int nunittrees = 0;
@@ -1593,7 +1420,11 @@ const HybridGBRForest *RooHybridBDTAutoPdf::TrainForest(int ntrees, bool reusefo
   for (int itree=0; itree<ntrees; ++itree) {
     printf("tree %i\n",itree);
 
-    UpdateTargets(nvars,sumw, itree); 
+    for (unsigned int iev=0; iev<fEvts.size(); ++iev) {
+      for (int itgt=0; itgt<fNTargets; ++itgt) {
+        fEvts.at(iev)->SetCurrentNode(itgt,0);
+      }
+    }    
 
     int maxtreesize = 0;
     int maxtreeidx = 0;
@@ -1602,17 +1433,37 @@ const HybridGBRForest *RooHybridBDTAutoPdf::TrainForest(int ntrees, bool reusefo
 
     for (int itgt=0; itgt<fNTargets; ++itgt) {
       int treetgt = static_cast<RooGBRTarget*>(fTgtVars.at(itgt))->Index();
-      forest->Trees()[treetgt].push_back(HybridGBRTree()); 
+      forest->Trees()[treetgt].push_back(HybridGBRTreeD()); 
     }
     
-    for (int itgt=0; itgt<fNTargets; ++itgt) {
-      int treetgt = static_cast<RooGBRTarget*>(fTgtVars.at(itgt))->Index();
-      HybridGBRTree &tree = forest->Trees()[treetgt].back();      
-      TrainTree(fEvts,sumw,tree,nvarstrain,0.,0,limits,itgt);
-      int treesize = tree.Responses().size();
-      treesizes[itgt] = treesize;
-      //printf("itgt = %i, treesize = %i\n",itgt,int(tree.Responses().size()));
+    UpdateTargets(nvars,-1);       
+      
+    for (int ivar=0; ivar<fFullParms.getSize(); ++ivar) {
+    //for (int ivar=fFullParms.getSize()-1; ivar>=0; --ivar) {
+    //for (int ivar=1; ivar<2; ++ivar) {            
+      int itgt = ivar - fExtVars.getSize();
+    
+     //UpdateTargets(nvars, ivar);       
+      
+      if (itgt>=0) {
+        int treetgt = static_cast<RooGBRTarget*>(fTgtVars.at(itgt))->Index();
+        HybridGBRTreeD &tree = forest->Trees()[treetgt].back();      
+        TrainTree(fEvts,sumw,tree,nvarstrain,0.,0,limits,itgt);
+        int treesize = tree.Responses().size();
+        treesizes[itgt] = treesize;        
+      }
+      
+      //FitResponses(forest, ivar);
+
     }
+    
+    FitResponses(forest,-1);
+    
+//     for (int ivar=1; ivar<2; ++ivar) {                
+//       FitResponses(forest, ivar);
+//     }
+    
+    
     
     for (int itgt=0; itgt<fNTargets; ++itgt) {
       int treesize = treesizes[itgt];
@@ -1625,18 +1476,15 @@ const HybridGBRForest *RooHybridBDTAutoPdf::TrainForest(int ntrees, bool reusefo
     
     printf("maxtreesize = %i, maxtgtidx = %i\n",maxtreesize,maxtreeidx);
 
-    double originalshrinkage = fShrinkage;
     if (maxtreesize==1) {
       ++nunittrees;
-      //fShrinkage = std::max(originalshrinkage,0.9);
     }
     else {
       nunittrees = 0.;
     }
     
-    FitResponses(forest);
+    //FitResponses(forest);
 
-    fShrinkage = originalshrinkage;
     
     nllvals.push_back(fNLLVal);
     
@@ -1651,11 +1499,18 @@ const HybridGBRForest *RooHybridBDTAutoPdf::TrainForest(int ntrees, bool reusefo
       break;
     }
     
-    oldnllidx = nllvals.size() - 3.0/fShrinkage - 1;
-    //if (oldnllidx>=0 && (fNLLVal - nllvals[oldnllidx])>(-2e-3) && std::abs(dldrval-dldrvals[oldnllidx])<2e-1) {
-    if (oldnllidx>=0 && (fNLLVal - nllvals[oldnllidx])>(-2e-3)) {
-      printf("breaking\n");
+    if (nunittrees>100) {
+      printf("Max number of unit trees %i exceeded, breaking\n",nunittrees);
       break;
+    }
+    
+    if (0) {
+      oldnllidx = nllvals.size() - 3.0/fShrinkage - 1;
+      //if (oldnllidx>=0 && (fNLLVal - nllvals[oldnllidx])>(-2e-3) && std::abs(dldrval-dldrvals[oldnllidx])<2e-1) {
+      if (oldnllidx>=0 && (fNLLVal - nllvals[oldnllidx])>(-2e-3)) {
+	printf("breaking\n");
+	break;
+      }
     }
 
   }
@@ -1663,7 +1518,7 @@ const HybridGBRForest *RooHybridBDTAutoPdf::TrainForest(int ntrees, bool reusefo
   fFunc->setOperMode(RooAbsArg::Auto);
   
 //  printf("fNorm = %5f\n",fNorm);
-  //return fully trained HybridGBRForest
+  //return fully trained HybridGBRForestD
   
   if (reuseforest) {
     fFunc->setValueDirty();
@@ -1698,7 +1553,7 @@ const HybridGBRForest *RooHybridBDTAutoPdf::TrainForest(int ntrees, bool reusefo
     
   
 //_______________________________________________________________________
-void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, double sumwtotal, HybridGBRTree &tree, const int nvars, double transition, int depth, const std::vector<std::pair<float,float> > limits, int tgtidx) {
+void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, double sumwtotal, HybridGBRTreeD &tree, const int nvars, double transition, int depth, const std::vector<std::pair<float,float> > limits, int tgtidx) {
   
   
   //alignas(32) float floats[128];
@@ -1937,8 +1792,8 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
   //  float sumwright=0.;
     int bestbin=0;
     
-    //const double fulldiff = std::min(0.,-0.5*sumtgt*sumtgt*vdt::fast_inv(sumtgt2));
-    const double fulldiff = std::min(0.,-0.5*sumtgt*sumtgt/sumtgt2);
+    const double fulldiff = std::min(0.,-0.5*sumtgt*sumtgt*vdt::fast_inv(sumtgt2));
+    //const double fulldiff = std::min(0.,-0.5*sumtgt*sumtgt/sumtgt2);
     
 
     
@@ -1993,18 +1848,27 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
       
 
 
-      if ( _bsepgains[ivar][ibin]>maxsepgain && !std::isinf(_bsepgains[ivar][ibin]) && _sumtgt2s[ivar][ibin]>0. && (sumtgt2-_sumtgt2s[ivar][ibin])>0.) {
+      //if ( _bsepgains[ivar][ibin]>maxsepgain && !std::isinf(_bsepgains[ivar][ibin]) && _sumtgt2s[ivar][ibin]>0. && (sumtgt2-_sumtgt2s[ivar][ibin])>0.) {
+      if ( _bsepgains[ivar][ibin]>maxsepgain && std::isnormal(_bsepgains[ivar][ibin])) {
 	
 	bool passminweights = true;
 	double minweights = std::numeric_limits<double>::max();
+	double totalweightleft = 0;
+	double totalweightright = 0;
 	for (int icls=0; icls<ncls; ++icls) {
 	  double minweightcls = std::min(_sumwscls[ivar][icls][ibin], _sumwscls[ivar][icls][nbins-1] - _sumwscls[ivar][icls][ibin]);
-	  if (minweightcls < fMinWeights[icls]) {
+	  if (fMinWeights.size() && minweightcls < fMinWeights[icls]) {
 	    passminweights = false;
 	  }
 	  if (minweightcls < minweights) {
 	    minweights = minweightcls;
 	  }
+	  totalweightleft += _sumwscls[ivar][icls][ibin];
+	  totalweightright += _sumwscls[ivar][icls][nbins-1] - _sumwscls[ivar][icls][ibin];
+	}
+	
+	if (fMinWeightTotal>=0. && (totalweightleft<fMinWeightTotal || totalweightright<fMinWeightTotal) ) {
+	  passminweights = false;
 	}
 	
 	
@@ -2280,7 +2144,7 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
 
 
 //_______________________________________________________________________
-void RooHybridBDTAutoPdf::BuildLeaf(const std::vector<HybridGBREvent*> &evts, HybridGBRTree &tree, int tgtidx) {
+void RooHybridBDTAutoPdf::BuildLeaf(const std::vector<HybridGBREvent*> &evts, HybridGBRTreeD &tree, int tgtidx) {
 
   //printf("building leaf\n");
   
@@ -2386,7 +2250,7 @@ double RooHybridBDTAutoPdf::EvalLossRooFit() {
   
 }
 
-double RooHybridBDTAutoPdf::EvalLoss(HybridGBRForest *forest, double lambda, const TVectorD &dL, int itree) {
+double RooHybridBDTAutoPdf::EvalLoss(HybridGBRForestD *forest, double lambda, const TVectorD &dL, int itree) {
  
  // int tgtidx = itree%fNTargets;
   
@@ -2403,10 +2267,13 @@ double RooHybridBDTAutoPdf::EvalLoss(HybridGBRForest *forest, double lambda, con
   for (int itgt=0; itgt<fNTargets; ++itgt) {
     localidxs[itgt] = nparms;
     int treetgt = static_cast<RooGBRTarget*>(fTgtVars.at(itgt))->Index();
-    if (forest->Trees()[treetgt].size())
+    
+    if (forest->Trees()[treetgt].size() && forest->Trees()[treetgt].back().Responses().size()) {
       nparms += forest->Trees()[treetgt].back().Responses().size();
-    else 
-      nparms += 1;
+    }
+    else {
+      nparms += 1;    
+    }
   }   
    
 //   int nparms = fExtVars.getSize() + fNTargets*nterm; 
@@ -2476,7 +2343,7 @@ double RooHybridBDTAutoPdf::EvalLoss(HybridGBRForest *forest, double lambda, con
 
     for (int itgt=0; itgt<fNTargets; ++itgt) {
       int iel = localidxs[itgt] + fEvts[ievt]->CurrentNode(itgt);
-      static_cast<RooRealVar*>(fStaticTgtsClones[ithread].at(itgt))->setVal(fEvts[ievt]->Target(itgt) + float(lambda*dL[iel]));
+      static_cast<RooRealVar*>(fStaticTgtsClones[ithread].at(itgt))->setVal(fEvts[ievt]->Target(itgt) + lambda*dL[iel]);
     }
     
     int evcls = fEvts[ievt]->Class(); 
@@ -2921,17 +2788,12 @@ void RooHybridBDTAutoPdf::FillDerivatives() {
 }
 
 
-void RooHybridBDTAutoPdf::FitResponses(HybridGBRForest *forest) {
+void RooHybridBDTAutoPdf::FitResponses(HybridGBRForestD *forest, int selvar = -1) {
 
-  printf("fit responses\n");
-  //int tgtidx = itree%(fNTargets);
+  printf("fit responses, selvar = %i\n",selvar);
 
+  //int seltgt = selvar - fExtVars.getSize();
   
-  //RooRealVar &minosarg = *fR;
-  //bool doconstraint = findError && std::abs(fNLLVal-threshold)<10.;
-  
-  //int nterm = tree.Responses()[0].size();
-
   int nextvars = fExtVars.getSize();
   
   //printf("build indexes\n");
@@ -2940,34 +2802,28 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForest *forest) {
   for (int itgt=0; itgt<fNTargets; ++itgt) {
     localidxs[itgt] = nparms;
     int treetgt = static_cast<RooGBRTarget*>(fTgtVars.at(itgt))->Index();
-    nparms += forest->Trees()[treetgt].back().Responses().size();
+    
+    if (forest->Trees()[treetgt].size() && forest->Trees()[treetgt].back().Responses().size()) {
+      nparms += forest->Trees()[treetgt].back().Responses().size();
+    }
+    else {
+      nparms += 1;    
+    }
+    
   }
   //printf("done build indexes\n");
   
-//  double dr = 0.;
-  
-  int idxglobal = 0;
-  //int idxn0 = idxglobal + fExtVars.index(fN0);
-  
-  //printf("idxn0 = %i, fN0 = %5f\n", idxn0,fN0->getVal());
 
   double nmc = 0.;
   double nmcalt = 0.;
-  //double dldr = 0.;
+  int idxglobal = 0;
   
   
       
   int msize = nparms;
   
-  //bool usematrix = true;
-  bool usematrix = msize<8000;
-  //bool usematrix = false;
   
-  //double lambda = 1.0;
-//    double nll = 0.;
-  //fNLLVal = 0.; 
-
-  printf("allocating Hessian with size %i\n",msize);
+  bool usematrix = (msize<8000);
   
   TMatrixDSym d2L;
   if (usematrix) {
@@ -2975,6 +2831,7 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForest *forest) {
   }
   //std::map<std::pair<int,int>,double> d2Lmap;
   TVectorD dL(msize);
+  TVectorD d2Lv(msize);
 
   RooArgSet parmset(fParmVars);
 	
@@ -2983,6 +2840,7 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForest *forest) {
   //std::vector<TMatrixDSym> d2Ls(fNThreads,TMatrixDSym(msize));
   //std::vector<std::map<std::pair<int,int>,double> > d2Lmaps(fNThreads);
   std::vector<TVectorD> dLs(fNThreads,TVectorD(msize));
+  std::vector<TVectorD> d2Lvs(fNThreads,TVectorD(msize));
   
   
   std::vector<double> nmcs(fNThreads);
@@ -2993,6 +2851,7 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForest *forest) {
   for (unsigned int iev=0; iev<fEvts.size(); ++iev) {
 
     int ithread = omp_get_thread_num();
+    //int ithread = 0;
       
 //    int termidx = fEvts[iev]->CurrentNode();
 //    int idxlocal = nextvars + fNTargets*termidx;
@@ -3025,6 +2884,8 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForest *forest) {
     for (unsigned int iidx=0; iidx<fOuterIndices[evcls].size(); ++iidx) {
 	
       int ivar = fOuterIndices[evcls][iidx];
+      if (selvar>=0 && ivar!=selvar) continue;
+      
       int idrv = ivar;
       int itgt = ivar - fExtVars.getSize(); 
       int iel;
@@ -3036,7 +2897,18 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForest *forest) {
       
       dLs[ithread][iel] += -weight*drvi*invpdf;
       
+      double drv2i = fEvts[iev]->Derivative2(idrv);        
+      
+      d2Lvs[ithread][iel] += -weight*drv2i*invpdf + weight*drvi*drvi*invpdfsq;
+      //d2Lvs[ithread][iel] += weight*drvi*drvi*invpdfsq;
+      
+      if (!std::isnormal(d2Lvs[ithread][iel]) && d2Lvs[ithread][iel]!=0.) {
+        printf("d2LV = %5f, weight = %5e,drvi = %5e, drv2i = %5e, invpdf = %5e, invpdfsq = %5e\n",d2Lvs[ithread][iel], weight,drv2i,drvi,invpdf,invpdfsq);
+      }
+      
       if (!usematrix) continue;
+      
+//      double drv2i = fEvts[iev]->Derivative2(idrv);  
       
       //double drv2i = fEvts[iev]->Derivative2(idrv);
       //d2Lmaps[ithread][std::pair<int,int>(iel,iel)] += -weight*drv2i*invpdf;
@@ -3045,6 +2917,14 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForest *forest) {
       //d2Ls[ithread][iel][iel] += -weight*drv2i*invpdf;
       
 
+//       double drv2i = fEvts[iev]->Derivative2(idrv);
+//       
+//       double d2approxi = weight*drvi*drvi*invpdfsq;
+//       double d2i = d2approxi - weight*drv2i*invpdf;
+//       
+//       if (std::abs(d2i)<(std::abs(1e-3*d2approxi))) continue;
+      
+      
       for (unsigned int jidx=iidx; jidx<fOuterIndices[evcls].size(); ++jidx) {
       
 	
@@ -3062,8 +2942,33 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForest *forest) {
         
         //double updval = d2L(iel,jel) + weight*drvi*drvj*invpdfsq;
         
+        //if (fEvts[iev]->Derivative2(idrv)==0. || fEvts[iev]->Derivative2(jdrv)==0.) continue;
+        
+/*        double drv2j = fEvts[iev]->Derivative2(idrv);
+        
+        
+        double d2approxj = weight*drvj*drvj*invpdfsq;
+        double d2j = d2approxj - weight*drv2j*invpdf;
+        
+        if (std::abs(d2j)<(std::abs(1e-3*d2approxj))) continue;  */    
+        
+        double d2val = weight*drvi*drvj*invpdfsq;
+        
+        
+        
+//         if (idrv==jdrv) {
+//           double drv2ij = fEvts[iev]->Derivative2(jdrv);
+//           d2val += -weight*drv2ij*invpdf;
+//         }
+//         else {
+//           continue;
+//         }
+        
+        
+        
         #pragma omp atomic update
-        d2L(iel,jel) += weight*drvi*drvj*invpdfsq;
+        d2L(iel,jel) += d2val;
+        //d2L(iel,jel) += weight*drvi*drvj*invpdfsq;
         
         //d2Lmaps[ithread][std::pair<int,int>(iel,jel)] += weight*drvi*drvj*invpdfsq;
 	//d2Ls[ithread][iel][jel] += weight*drvi*drvj*invpdfsq;
@@ -3078,10 +2983,15 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForest *forest) {
   
   for (int ithread=0; ithread<fNThreads; ++ithread) {
     dL += dLs[ithread];
+    d2Lv += d2Lvs[ithread];
     //d2L += d2Ls[ithread];
     nmc += nmcs[ithread];
     
-    if (!usematrix) continue;
+//     for (int i=0; i<msize; ++i) {
+//       printf("ithread = %i, i = %i, dLs[ithread] = %5e, d2Lvs[ithread] = %5e, d2Lv = %5e\n",ithread,i,dLs[ithread][i],d2Lvs[ithread][i],d2Lv[i]);
+//     }
+    
+    //if (!usematrix) continue;
 
     
 //     for (std::map<std::pair<int, int>, double>::const_iterator it=d2Lmaps[ithread].begin(); it!=d2Lmaps[ithread].end(); ++it) {
@@ -3094,14 +3004,22 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForest *forest) {
    
   for (unsigned int iidx=0; iidx<fOuterIndices[infunc].size(); ++iidx) {
 	int ivar = fOuterIndices[infunc][iidx];
+        if (selvar>=0 && ivar!=selvar) continue;
+        
 	int idrv = ivar;      
 	int iel = idxglobal + ivar;
 
 	double drvi = Derivative1(static_cast<RooAbsReal*>(fFullFuncs.at(infunc)),static_cast<RooRealVar*>(fFullParms.at(idrv)),&parmset,1e-3*static_cast<RooRealVar*>(fFullParms.at(idrv))->getError());
 	
 	dL[iel] += drvi;
-      
-        if (!usematrix) continue;
+
+	double drv2i = Derivative2(static_cast<RooAbsReal*>(fFullFuncs.at(infunc)),static_cast<RooRealVar*>(fFullParms.at(idrv)),&parmset,1e-3*static_cast<RooRealVar*>(fFullParms.at(idrv))->getError());
+	
+	d2Lv[iel] += drv2i;
+        
+        if (!usematrix) continue;        
+	
+
 
 	
     for (unsigned int jidx=iidx; jidx<fOuterIndices[infunc].size(); ++jidx) {
@@ -3144,7 +3062,11 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForest *forest) {
   }
 
   bool solved = false;
-  TVectorD dpar(msize);    
+  //bool gradient = false;
+  
+  TVectorD dpar(msize);
+  TVectorD dparm(msize);    
+  TVectorD dparg = -1.0*dL;
   
 //solve
   if (usematrix) {
@@ -3155,191 +3077,75 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForest *forest) {
     //TDecompChol dbk(d2L);
     solved = dbk.Solve(dLc);
     printf("done matrix decomposition\n");  
-    dpar = -1.0*dLc;
-  }
-
-  
-
-//   bool solved = false;
-//   TVectorD dpar(msize);  
-  
-//   double maxscale = 0.;
-//   for (int iel=0; iel<msize; ++iel) {
-//     int iparm;
-//     if (iel<fExtVars.getSize()) {
-//       iparm = iel;
-//     }
-//     else {
-//       iparm = (iel-fExtVars.getSize())%fNTargets;
-//     }
-//     double scale = dL[iel]/fStepSizes[iparm];
-//     if (scale>maxscale) {
-//       maxscale = scale;
-//     }
-//   }
-//   
-//   double nlldrv=0;
-//   for (int iel=0; iel<msize; ++iel) {
-//     nlldrv += dL[iel];
-//   }
-//   
-//   
-//   double drvstep = 1.0/maxscale;
-//   
-//   double upnllval = EvalLoss(forest,drvstep,dL);
-//   double downnllval = EvalLoss(forest,-drvstep,dL);
-//   
-//   double nlldrv2 = (upnllval + downnllval - 2.0*fNLLVal)/drvstep/drvstep;
-//   
-//   dpar = (-nlldrv*nlldrv/nlldrv2)*dL;
-//   solved = true;
-  
-  
-  
-  
-  
-  
-//   if (usematrix) {
-//     //symmetrize matrix
-//     for (std::map<std::pair<int, int>, double>::const_iterator it=d2Lmap.begin(); it!=d2Lmap.end(); ++it) {
-//       d2Lmap[std::pair<int,int>(it->first.second,it->first.first)] = it->second;
-//     }
-//     
-//     printf("create sparse matrix, msize = %i, nnzr = %i\n",msize,int(d2Lmap.size()));;
-//     
-//     
-//     sparserows.resize(d2Lmap.size());
-//     sparsecols.resize(d2Lmap.size());
-//     sparsedata.resize(d2Lmap.size());
-//     
-//     {
-//       int isparse = 0;
-//       for (std::map<std::pair<int, int>, double>::const_iterator it=d2Lmap.begin(); it!=d2Lmap.end(); ++it, ++isparse) {
-// 	sparserows[isparse] = it->first.first;
-// 	sparsecols[isparse] = it->first.second;
-// 	sparsedata[isparse] = it->second;
-//       }
-//     }
-// 
-//     TMatrixDSparse d2L(msize,msize);
-//     d2L.SetMatrixArray(sparsedata.size(), &sparserows[0], &sparsecols[0], &sparsedata[0]);
-//   
-//     printf("start matrix decomposition\n");
-//     TVectorD dLc(dL);
-//     TDecompSparse dsp(d2L,0);
-//     solved = dsp.Solve(dLc);
-//     dpar = -1.0*dLc;
-//     printf("done matrix decomposition\n");
-//     
-//     double drv=0.;
-//     for (int ipar=0; ipar<msize; ++ipar) {
-//       drv += dpar[ipar]*dL[ipar];
-//       if (std::isnan(dL[ipar]) || std::isinf(dL[ipar])) {
-// 	solved = false;
-//       }
-//     }
-//     
-//     if (drv>=0) {
-//       solved = false;
-//     }
-//     
-//   }
-  
- // printf("FitRespones done invert\n");
-
-  
-  double step = fShrinkage;
-
-  double drvstep = 1e-3;
-  if (!solved) {
- // if (1) {  
-    printf("fallback to gradient descent\n");
-    dpar = -1.0*dL;
-    drvstep = 1e-9;
+    dparm = -1.0*dLc;
   }
   
-//   double maxscale = 0.;
-//   for (int iel=0; iel<msize; ++iel) {
-//     int iparm;
-//     if (iel<fExtVars.getSize()) {
-//       iparm = iel;
-//     }
-//     else {
-//       //iel = localidxs[itgt] + termidx
-//       //iparm = (iel-fExtVars.getSize())%fNTargets;
-//       int tgt = 0;
-//       for (int itgt=0; itgt<fNTargets; ++itgt) {
-//         if (iel>=localidxs[itgt]) {
-//           tgt = itgt;
-//           break;
-//         }        
-//       }
-//       iparm = fExtVars.getSize() + tgt;
-//     }
-//     double scale = dpar[iel]/fStepSizes[iparm];
-//     if (scale>maxscale) {
-//       maxscale = scale;
-//     }
-//   }
+//   double dllrm = 0.;
+//   double dllrg = 0.;
   
-//   double nlldrv=0;
-//   for (int iel=0; iel<msize; ++iel) {
-//     nlldrv += dpar[iel]*dL[iel];
-//   }
+  double step = 0;
+  double stepm = 0;
+  double stepg = 0;
   
   
-  //double drvstep = 1.0/maxscale;
-  if (fShrinkage<0.85)
-  {
-  
-    double upnllval = EvalLoss(forest,drvstep,dpar);
-    double downnllval = EvalLoss(forest,-drvstep,dpar);
+  if (solved) {
+    for (int i=0; i<msize; ++i) {
+      //protect against inf/nan elements and set them to zero
+      if (!std::isnormal(dparm(i))) dparm(i) = 0.;
+      
+      //protect against elements which run against the gradient and invert them
+      if ( (dL(i)*dparm(i))>0. ) dparm(i) = -dparm(i);
+      //if ( (dL(i)*dparm(i))>0. ) dparm(i) = 0.;
+    }
     
-    double nlldrv = (upnllval - downnllval)/(2.0*drvstep);
-    double nlldrv2 = (upnllval + downnllval - 2.0*fNLLVal)/drvstep/drvstep;
+    stepm = 1.0;
     
-    double maxscale = 0.;
-    step = -fShrinkage*nlldrv/nlldrv2;
-    
-    //step = -0./0.;
-    
-    printf("upnllval = %5f, downnllval = %5f, fNLLVal = %5f, maxscale = %5f, drvstep = %5f, nlldrv = %5f, nlldrv2 = %5f, step = %5f\n",upnllval,downnllval,fNLLVal,maxscale,drvstep,nlldrv,nlldrv2,step);
-    
-    //if (nlldrv>=0. || nlldrv2<=0. || !std::isfinite(step) ) step = 0.1*fShrinkage;
-    if (nlldrv>=0. || nlldrv2<=0. || !std::isnormal(step) || step<(0.1*fShrinkage) ) step = 0.1*fShrinkage;
-    //if (nlldrv>=0. || nlldrv2<=0. || std::isinf(step) || std::isnan(step) ) step = 0.1*fShrinkage;
-        
-    
-    
+    step = fShrinkage*stepm;
+    dpar = dparm;    
   }
   else {
-    step = fShrinkage;
-  }
+    dparg = -1.0*dL;
+        
+    double deltaL = 0;
+    for (int i=0; i<msize; ++i) {
+      deltaL += dL[i]*dparg[i];
+    }   
    
-//   if (!solved) {
-//     printf("fallback to gradient descent\n");
-//     
-//     dpar = -1.0*dL;
-//     drvstep = 1e-9;
-//     
-//     double upnllval = EvalLoss(forest,drvstep,dpar);
-//     double downnllval = EvalLoss(forest,-drvstep,dpar);
-//     
-//     double nlldrv = (upnllval - downnllval)/(2.0*drvstep);
-//     double nlldrv2 = (upnllval + downnllval - 2.0*fNLLVal)/drvstep/drvstep;
-//     
-//     double maxscale = 0.;
-//     step = -fShrinkage*nlldrv/nlldrv2;
-//     
-//     printf("upnllval = %5f, downnllval = %5f, fNLLVal = %5f, maxscale = %5f, drvstep = %5f, nlldrv = %5f, nlldrv2 = %5f, step = %5f\n",upnllval,downnllval,fNLLVal,maxscale,drvstep,nlldrv,nlldrv2,step);    
-//     
-//   }
-  //step = fShrinkage;
-  
-//   for (int iel=0; iel<msize; ++iel) {
-//     dpar[iel] = -dL[iel]/d2L(iel,iel);
-//   }
+    stepg = 0.;
+    double drvstep = 0.1/deltaL;
+   
+    printf("fallback to gradient descent: deltaL = %5e, initial stepg = %5e, drvstep = %5e\n",deltaL, stepg,drvstep);
+    
+    double nllval = fNLLVal;
+    
+    while (stepg==0.) {
+      double upnllval = EvalLoss(forest,drvstep,dparg);
+      if (!std::isnormal(upnllval)) {
+        drvstep /= 2.0;
+        continue;
+      }
+        
+      double downnllval = EvalLoss(forest,-drvstep,dparg);
+      if (!std::isnormal(downnllval)) {
+        drvstep /= 2.0;
+        continue;
+      }    
+      
+      double nlldrv2 = (upnllval + downnllval - 2.0*nllval)/drvstep/drvstep;      
 
+      stepg = -deltaL/nlldrv2;
+
+      if (nlldrv2<0.) {
+        stepg = -stepg;
+      }      
+      
+      dpar = dparg;
+      step = fShrinkage*stepg;       
+    
+    }
+    
+  }
+    
   double nllval = fNLLVal;
   int stepiter = 0;
   do {
@@ -3352,20 +3158,30 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForest *forest) {
     
     nllval = EvalLoss(forest,step,dpar);
     printf("step = %5f, nllval = %5f, fNLLVal = %5f\n",step,nllval,fNLLVal);
-    if ( (nllval-fNLLVal)<1e-3 ) {
-      break; 
+    //if (std::isnormal(nllval)) break;
+
+    
+    if ( std::isnormal(nllval) && (nllval-fNLLVal)<1e-3 ) {
+      break;
     }
     else {
       step /= 2.0;
     }
+    
+//     if ( (nllval-fNLLVal)<1e-3 ) {
+//       break; 
+//     }
+//     else {
+//       step /= 2.0;
+//     }
     ++stepiter;
   }
   while (stepiter<50);
 
-  if (!((nllval-fNLLVal)<1e-3)) {
-    step = 0.;
-    nllval = EvalLoss(forest, step,dpar);
-  }
+//   if (!((nllval-fNLLVal)<1e-3)) {
+//     step = 0.;
+//     nllval = EvalLoss(forest, step,dpar);
+//   }
   
   fNLLVal = nllval;
   
@@ -3385,6 +3201,7 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForest *forest) {
   
   
   for (int ivar=0; ivar<fExtVars.getSize(); ++ivar) {
+    if (selvar>=0 && ivar!=selvar) continue;
     static_cast<RooRealVar*>(fExtVars.at(ivar))->setVal(static_cast<RooRealVar*>(fExtVars.at(ivar))->getVal() + step*dpar(ivar));   
   }
   
@@ -3396,8 +3213,10 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForest *forest) {
     }
   }    
   
+  int seltgt = selvar - fExtVars.getSize();
   
   for (int itgt=0; itgt<fNTargets; ++itgt) {
+    if (selvar>=0 && itgt!=seltgt) continue;
     int treetgt = static_cast<RooGBRTarget*>(fTgtVars.at(itgt))->Index();
     int nterm = forest->Trees()[treetgt].back().Responses().size();
     for (int iterm=0; iterm<nterm; ++iterm) {
@@ -3408,6 +3227,7 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForest *forest) {
   
   for (std::vector<HybridGBREvent*>::const_iterator it = fEvts.begin(); it!=fEvts.end(); ++it) {
     for (int itgt=0; itgt<fNTargets; ++itgt) {
+      if (selvar>=0 && itgt!=seltgt) continue;
       int termidx = (*it)->CurrentNode(itgt);
       (*it)->SetTarget(itgt,(*it)->Target(itgt)+step*dpar(localidxs[itgt] + termidx));
     }
@@ -3455,7 +3275,7 @@ void RooHybridBDTAutoPdf::GradientMinos() {
 //     return; 
   
     //save initial state
-    HybridGBRForest *origforest = new HybridGBRForest(*fFunc->Forest());
+    HybridGBRForestD *origforest = new HybridGBRForestD(*fFunc->Forest());
     std::vector<double> extvals(fExtVars.getSize());
     for (int ivar=0; ivar<fExtVars.getSize(); ++ivar) {
       extvals[ivar] = static_cast<RooRealVar*>(fExtVars.at(ivar))->getVal();
@@ -3507,7 +3327,7 @@ void RooHybridBDTAutoPdf::GradientMinos() {
     }   
     
 //     //restore initial state
-//     fFunc->SetForest(new HybridGBRForest(*origforest));
+//     fFunc->SetForest(new HybridGBRForestD(*origforest));
 //     for (int ivar=0; ivar<fExtVars.getSize(); ++ivar) {
 //       static_cast<RooRealVar*>(fExtVars.at(ivar))->setVal(extvals[ivar]);
 //     }
@@ -3620,7 +3440,7 @@ void RooHybridBDTAutoPdf::GradientMinos() {
    fclose(fp);     
     
     //restore initial state
-    fFunc->SetForest(new HybridGBRForest(*origforest));
+    fFunc->SetForest(new HybridGBRForestD(*origforest));
     delete origforest;
     for (int ivar=0; ivar<fExtVars.getSize(); ++ivar) {
       static_cast<RooRealVar*>(fExtVars.at(ivar))->setVal(extvals[ivar]);
@@ -3847,7 +3667,7 @@ double RooHybridBDTAutoPdf::Derivative2Fast(RooAbsReal *function, RooRealVar *va
   var2->setVal(startval2-stepb1);
   double valdowndown1 = function->getValV(nset);    
   
-  double drv1 = (valupup1+valdowndown1-valupdown1-valdownup1)/(4.0*stepa1*stepb1);
+  double drv1 = (valupup1+valdowndown1-valupdown1-valdownup1)*vdt::fast_inv(4.0*stepa1*stepb1);
   
   var1->setVal(startval1);
   var2->setVal(startval2);

@@ -1,11 +1,10 @@
-#include "../interface/HybridGBRForest.h"
+#include "../interface/HybridGBRForestD.h"
 
-ClassImp(HybridGBRForest) 
-
+ClassImp(HybridGBRForestD) 
 
 
 //_______________________________________________________________________
-HybridGBRForest::HybridGBRForest(int ntargets)
+HybridGBRForestD::HybridGBRForestD(int ntargets)
 {
   fInitialResponse.resize(ntargets,0.);
 //  fResponses.resize(ntargets);
@@ -13,6 +12,6 @@ HybridGBRForest::HybridGBRForest(int ntargets)
 }
 
 //_______________________________________________________________________
-HybridGBRForest::~HybridGBRForest() 
+HybridGBRForestD::~HybridGBRForestD() 
 {
 }
