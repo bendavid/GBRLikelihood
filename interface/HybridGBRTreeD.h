@@ -1,6 +1,6 @@
 
-#ifndef EGAMMAOBJECTS_HybridGBRTree
-#define EGAMMAOBJECTS_HybridGBRTree
+#ifndef GBRLIKELIHOOD_HybridGBRTreeD
+#define GBRLIKELIHOOD_HybridGBRTreeD
 
 //////////////////////////////////////////////////////////////////////////
 //                                                                      //
@@ -29,19 +29,19 @@
 #include <cmath>
 #include "Rtypes.h"
 
-  class HybridGBRTree {
+  class HybridGBRTreeD {
 
     public:
 
-       HybridGBRTree() {}
-       virtual ~HybridGBRTree();
+       HybridGBRTreeD() {}
+       virtual ~HybridGBRTreeD();
               
        //double GetResponse(const float* vector) const;
        double GetResponse(int termidx) const { return fResponses[termidx]; }
        int TerminalIndex(const float *vector) const;
               
-       std::vector<float> &Responses() { return fResponses; }       
-       const std::vector<float> &Responses() const { return fResponses; }
+       std::vector<double> &Responses() { return fResponses; }       
+       const std::vector<double> &Responses() const { return fResponses; }
        
        std::vector<unsigned char> &CutIndices() { return fCutIndices; }
        const std::vector<unsigned char> &CutIndices() const { return fCutIndices; }
@@ -63,18 +63,18 @@
 	std::vector<float> fCutVals;
 	std::vector<int> fLeftIndices;
 	std::vector<int> fRightIndices;
-	std::vector<float> fResponses;  
+	std::vector<double> fResponses;  
         std::vector<std::vector<std::pair<float,float> > > fLimits;
-
+      
     private:
 
-      ClassDef(HybridGBRTree,2)        
+      ClassDef(HybridGBRTreeD,2)    
         
   };
 
 
 //_______________________________________________________________________
-inline int HybridGBRTree::TerminalIndex(const float* vector) const {
+inline int HybridGBRTreeD::TerminalIndex(const float* vector) const {
   
   int index = 0;
   

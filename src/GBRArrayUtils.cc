@@ -64,16 +64,16 @@ void GBRArrayUtils::FillSepGains(const double *__restrict__ sumtgts, const doubl
   
   for (int ibin=0; ibin<nbins; ++ibin) {     
         
-    //double leftdiff = std::min(0.,-0.5*sumtgts[ibin]*sumtgts[ibin]*vdt::fast_inv(sumtgt2s[ibin]));
+    double leftdiff = std::min(0.,-0.5*sumtgts[ibin]*sumtgts[ibin]*vdt::fast_inv(sumtgt2s[ibin]));
     //double leftdiff = std::min(0.,-0.5*sumtgts[ibin]*sumtgts[ibin]/sumtgt2s[ibin]);
-    double leftdiff = -0.5*sumtgts[ibin]*sumtgts[ibin]/sumtgt2s[ibin];
+    //double leftdiff = -0.5*sumtgts[ibin]*sumtgts[ibin]/sumtgt2s[ibin];
 
     double righttgtsum = sumtgt - sumtgts[ibin];
     double righttgt2sum = sumtgt2 - sumtgt2s[ibin];
     
-    //double rightdiff = std::min(0.,-0.5*righttgtsum*righttgtsum*vdt::fast_inv(righttgt2sum));
+    double rightdiff = std::min(0.,-0.5*righttgtsum*righttgtsum*vdt::fast_inv(righttgt2sum));
     //double rightdiff = std::min(0.,-0.5*righttgtsum*righttgtsum/righttgt2sum);
-    double rightdiff = -0.5*righttgtsum*righttgtsum/righttgt2sum;
+    //double rightdiff = -0.5*righttgtsum*righttgtsum/righttgt2sum;
 
 	  
     //weighted improvement in variance from this split     

@@ -28,8 +28,8 @@
 class RooRealVar;
 class RooAbsReal;
 class RooArgSet;
-class HybridGBRForest;
-class HybridGBRTree;
+class HybridGBRForestD;
+class HybridGBRTreeD;
 class TNtuple;
 
 class RooTreeConvert {
@@ -47,7 +47,28 @@ private:
   
 };
 
-
+class RooNormPdf : public RooAbsReal {
+ 
+public:
+  RooNormPdf() {}
+  RooNormPdf(const char *name, const char *title, RooAbsPdf &pdf, const RooArgSet &forcednormset);
+  RooNormPdf(const RooNormPdf &other, const char* name=0);
+  virtual ~RooNormPdf() {}
+  
+  virtual TObject* clone(const char* newname) const { return new RooNormPdf(*this,newname); }
+  
+  
+protected:
+  Double_t evaluate() const;
+  
+  RooRealProxy _pdf;
+  RooListProxy _forcednormset;
+  
+  
+private:
+  ClassDef(RooNormPdf,1)    
+  
+};
 
 class RooRealConstraint : public RooAbsReal {
  
@@ -183,24 +204,24 @@ public:
   virtual TObject* clone(const char* newname) const { return new RooGBRFunction(*this,newname); }
   
   
-  float GetResponse(int itgt) const;
+  double GetResponse(int itgt) const;
   
   const RooArgList &Vars() const { return _vars; }
   
   
-  HybridGBRForest *Forest() { return _forest; }
-  void SetForest(HybridGBRForest *forest);
+  HybridGBRForestD *Forest() { return _forest; }
+  void SetForest(HybridGBRForestD *forest);
   
 protected:
   virtual Double_t evaluate() const { return 0.; }
   
   
   RooListProxy _vars;
-  HybridGBRForest *_forest;
+  HybridGBRForestD *_forest;
   mutable std::vector<float> _eval;
   
 private:
-  ClassDef(RooGBRFunction,1)
+  ClassDef(RooGBRFunction,2)
 
   
   
@@ -256,11 +277,12 @@ public:
   void SetMaxNSpurious(double x) { fMaxNSpurious = x; }
   void SetTransitionQuantile(float x)  { fTransitionQuantile = x;   }
   void SetMinWeights(const std::vector<double> &minweights) { fMinWeights = minweights; }
+  void SetMinWeightTotal(double x) { fMinWeightTotal = x; }
   void SetMaxDepth(int depth) { fMaxDepth = depth; } 
   void SetMaxNodes(int max) { fMaxNodes = max; }
   void SetPrescaleInit(int n) { fPrescaleInit = n; }
  
-  const HybridGBRForest *TrainForest(int ntrees, bool reuseforest = false);  
+  const HybridGBRForestD *TrainForest(int ntrees, bool reuseforest = false);  
   
   void fitWithMinosFast();
   void fitWithMinos();
@@ -292,14 +314,14 @@ protected:
 //   typedef double double;  
   
   void BuildQuantiles(int nvars, double sumw);
-  void UpdateTargets(int nvars, double sumw, int itree);
+  void UpdateTargets(int nvars, int selvar);
   void FillDerivatives();
   
-  void TrainTree(const std::vector<HybridGBREvent*> &evts, double sumwtotal, HybridGBRTree &tree, const int nvars, double transition, int depth, std::vector<std::pair<float,float> > limits, int tgtidx=-1);      
-  void BuildLeaf(const std::vector<HybridGBREvent*> &evts, HybridGBRTree &tree, int tgtidx);
+  void TrainTree(const std::vector<HybridGBREvent*> &evts, double sumwtotal, HybridGBRTreeD &tree, const int nvars, double transition, int depth, std::vector<std::pair<float,float> > limits, int tgtidx=-1);      
+  void BuildLeaf(const std::vector<HybridGBREvent*> &evts, HybridGBRTreeD &tree, int tgtidx);
 
-  //void FitResponses(const std::vector<HybridGBREvent*> &evts, double sumwtotal, HybridGBRTree &tree);
-  void FitResponses(HybridGBRForest *forest);  
+  //void FitResponses(const std::vector<HybridGBREvent*> &evts, double sumwtotal, HybridGBRTreeD &tree);
+  void FitResponses(HybridGBRForestD *forest, int selvar);  
   
   TMatrixD vmultT(const TVectorD &v, const TVectorD &vT) const;
   double vmult(const TVectorD &vT, const TVectorD &v) const;
@@ -314,7 +336,7 @@ protected:
   static double EvalLossNull(double dummy);
   
   double EvalLossRooFit();
-  double EvalLoss(HybridGBRForest *forest, double lambda, const TVectorD &dL, int itree=-1);
+  double EvalLoss(HybridGBRForestD *forest, double lambda, const TVectorD &dL, int itree=-1);
 
   
   double Derivative1Fast(RooAbsReal *function, double currentval, RooRealVar *var, RooArgSet *nset=0, double step=1e-3);
@@ -402,6 +424,7 @@ protected:
   std::string               fTargetVar;
   int                       fMinEvents;
   std::vector<double>       fMinWeights;
+  double                    fMinWeightTotal;
   double                    fShrinkage;
   int                       fNTrees;
   const int                 fNQuantiles;
