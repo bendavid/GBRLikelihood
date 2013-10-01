@@ -59,6 +59,7 @@
 #include "RooSimultaneous.h"
 #include "RooMinimizer.h"
 #include "RooAddition.h"
+#include "RooProduct.h"
 #include "TNtuple.h"
 #include "TDecompQRH.h"
 #include "TDecompSVD.h"
@@ -438,30 +439,111 @@ Int_t RooCondAddPdf::getAnalyticalIntegral(RooArgSet& allVars, RooArgSet& analVa
     if (pdfcode!=code) code = 0;
   }
   
-  //printf("RooCondAddPdf code = %i\n",code);
-  //return 1;
   return code;
   
 }
 
 Double_t RooCondAddPdf::analyticalIntegral(Int_t code, const char* rangeName) const
-{
-  
+{ 
   return 1.0;
+}
+
+RooAbsReal *RooCondAddPdf::createCDF(const RooArgSet &iset, const RooArgSet &nset) {
  
-//   double finalcoeff = 1.0;
-//   double integral=0.;
-//   for (int i=0; i<_coeffs.getSize(); ++i) {
-//     double coval = static_cast<RooAbsReal*>(_coeffs.at(i))->getVal();
-//     integral += coval*static_cast<RooAbsReal*>(_pdfs.at(i))->analyticalIntegral(code,rangeName);
-//     finalcoeff -= coval;
-//   }
-//   
-//   integral += finalcoeff*static_cast<RooAbsReal*>(_pdfs.at(_pdfs.getSize()-1))->analyticalIntegral(code,rangeName);
-//   
-//   return integral;
+  RooArgList cdfcomps;
+  
+  RooAbsArg *lastcoeff = 0;
+  RooAddition *sumcoeff = new RooAddition(TString::Format("%s_sumcoeff",GetName()),"",_coeffs);
+  
+  if (_selfnorm) {
+    lastcoeff = new RooFormulaVar(TString::Format("%s_lastcoeff",GetName()),"","1.0 - @0",*sumcoeff);
+  }
+  else {
+    lastcoeff = _coeffs.at(_pdfs.getSize()-1);
+  }
+  
+  RooArgSet fullset;
+  fullset.add(iset);
+  fullset.add(nset);
+  
+  for (int ipdf=0; ipdf<_pdfs.getSize(); ++ipdf) {
+    RooAbsReal *singlecdf = static_cast<RooAbsPdf*>(_pdfs.at(ipdf))->createRunningIntegral(iset,nset);
+    //const RooAbsReal *singlenorm = static_cast<RooAbsPdf*>(_pdfs.at(ipdf))->getNormIntegral(fullset);
+    RooAbsArg *coeff = ipdf==(_pdfs.getSize()-1) ? lastcoeff : _coeffs.at(ipdf);
+    RooProduct *singlecdfnorm = new RooProduct(TString::Format("%s_singlecdfnorm_%i",GetName(),ipdf),"",RooArgList(*coeff,*singlecdf));
+    //RooFormulaVar *singlecdfnorm = new RooFormulaVar(TString::Format("%s_singlecdfnorm_%i",GetName(),ipdf),"","@0*@1/@2",RooArgList(*coeff,*singlecdf,*singlenorm));
+    cdfcomps.add(*singlecdfnorm);
+  }
+  
+  RooAbsReal *cdf = new RooAddition(TString::Format("%s_cdf",GetName()),"",cdfcomps);
+  
+  RooAbsReal *cdfnorm = 0;
+  if (_selfnorm) {
+    cdfnorm = cdf;
+  }
+  else {
+    RooFormulaVar *normfactor = new RooFormulaVar(TString::Format("%s_normfactor",GetName()),"","1.0/@0",*sumcoeff);
+    cdfnorm = new RooProduct(TString::Format("%s_cdfnorm",GetName()),"",RooArgList(*normfactor,*cdf));
+  }
+    
+  return cdfnorm;
   
 }
+
+
+ClassImp(RooCondRatioPdf)
+
+RooCondRatioPdf::RooCondRatioPdf(const char *name, const char *title, RooAbsReal &ratio, RooAbsReal &pdfden) :
+  RooAbsPdf(name,title),
+  _ratio("ratio","",this,ratio),
+  _pdfden("pdfden","",this,pdfden)
+{
+
+}
+  
+  
+RooCondRatioPdf::RooCondRatioPdf(const RooCondRatioPdf& other, const char* name) :
+  RooAbsPdf(other,name),
+  _ratio("ratio",this,other._ratio),
+  _pdfden("pdfden",this,other._pdfden)
+{
+  
+}
+
+Double_t RooCondRatioPdf::evaluate() const
+{
+ 
+  return _ratio.arg().getVal(_normSet)*_pdfden.arg().getVal(_normSet);
+  
+}
+
+// Int_t RooCondRatioPdf::getAnalyticalIntegral(RooArgSet& allVars, RooArgSet& analVars, const char* rangeName) const
+// {
+//  
+//   int code = _pdfden.arg().getAnalyticalIntegral(allVars,analVars,rangeName);
+// 
+//   return code;
+//   
+// }
+
+// Double_t RooCondRatioPdf::analyticalIntegral(Int_t code, const char* rangeName) const
+// {
+//   
+//   return 1.0;
+//  
+// //   double finalcoeff = 1.0;
+// //   double integral=0.;
+// //   for (int i=0; i<_coeffs.getSize(); ++i) {
+// //     double coval = static_cast<RooAbsReal*>(_coeffs.at(i))->getVal();
+// //     integral += coval*static_cast<RooAbsReal*>(_pdfs.at(i))->analyticalIntegral(code,rangeName);
+// //     finalcoeff -= coval;
+// //   }
+// //   
+// //   integral += finalcoeff*static_cast<RooAbsReal*>(_pdfs.at(_pdfs.getSize()-1))->analyticalIntegral(code,rangeName);
+// //   
+// //   return integral;
+//   
+// }
 
 
 ClassImp(RooPdfAddReal)
@@ -2795,7 +2877,7 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForestD *forest, int selvar = -1
   //int seltgt = selvar - fExtVars.getSize();
   
   int nextvars = fExtVars.getSize();
-  
+    
   //printf("build indexes\n");
   int nparms = nextvars;
   std::vector<int> localidxs(fNTargets);
@@ -2827,11 +2909,12 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForestD *forest, int selvar = -1
   
   TMatrixDSym d2L;
   if (usematrix) {
+    printf("allocating matrix of size %i\n",msize);
     d2L.ResizeTo(msize,msize);
   }
   //std::map<std::pair<int,int>,double> d2Lmap;
   TVectorD dL(msize);
-  TVectorD d2Lv(msize);
+  //TVectorD d2Lv(msize);
 
   RooArgSet parmset(fParmVars);
 	
@@ -2840,7 +2923,7 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForestD *forest, int selvar = -1
   //std::vector<TMatrixDSym> d2Ls(fNThreads,TMatrixDSym(msize));
   //std::vector<std::map<std::pair<int,int>,double> > d2Lmaps(fNThreads);
   std::vector<TVectorD> dLs(fNThreads,TVectorD(msize));
-  std::vector<TVectorD> d2Lvs(fNThreads,TVectorD(msize));
+ //std::vector<TVectorD> d2Lvs(fNThreads,TVectorD(msize));
   
   
   std::vector<double> nmcs(fNThreads);
@@ -2850,7 +2933,7 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForestD *forest, int selvar = -1
   #pragma omp parallel for
   for (unsigned int iev=0; iev<fEvts.size(); ++iev) {
 
-    int ithread = omp_get_thread_num();
+    //int ithread = omp_get_thread_num();
     //int ithread = 0;
       
 //    int termidx = fEvts[iev]->CurrentNode();
@@ -2881,6 +2964,8 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForestD *forest, int selvar = -1
     //nmcs[ithread] += weight*(1.0-flim);
     //nmcs[ithread] += weight*(1.0-fval);
       
+    bool useseconddrv = fOuterIndices[evcls].size()==1;
+    
     for (unsigned int iidx=0; iidx<fOuterIndices[evcls].size(); ++iidx) {
 	
       int ivar = fOuterIndices[evcls][iidx];
@@ -2895,16 +2980,20 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForestD *forest, int selvar = -1
       
       double drvi = fEvts[iev]->Derivative(idrv);
       
-      dLs[ithread][iel] += -weight*drvi*invpdf;
+      //dLs[ithread][iel] += -weight*drvi*invpdf;
       
-      double drv2i = fEvts[iev]->Derivative2(idrv);        
+      double dval = -weight*drvi*invpdf;
+      #pragma omp atomic update
+      dL(iel) += dval;
       
-      d2Lvs[ithread][iel] += -weight*drv2i*invpdf + weight*drvi*drvi*invpdfsq;
+      //double drv2i = fEvts[iev]->Derivative2(idrv);        
+      
+     // d2Lvs[ithread][iel] += -weight*drv2i*invpdf + weight*drvi*drvi*invpdfsq;
       //d2Lvs[ithread][iel] += weight*drvi*drvi*invpdfsq;
       
-      if (!std::isnormal(d2Lvs[ithread][iel]) && d2Lvs[ithread][iel]!=0.) {
-        printf("d2LV = %5f, weight = %5e,drvi = %5e, drv2i = %5e, invpdf = %5e, invpdfsq = %5e\n",d2Lvs[ithread][iel], weight,drv2i,drvi,invpdf,invpdfsq);
-      }
+//       if (!std::isnormal(d2Lvs[ithread][iel]) && d2Lvs[ithread][iel]!=0.) {
+//         printf("d2LV = %5f, weight = %5e,drvi = %5e, drv2i = %5e, invpdf = %5e, invpdfsq = %5e\n",d2Lvs[ithread][iel], weight,drv2i,drvi,invpdf,invpdfsq);
+//       }
       
       if (!usematrix) continue;
       
@@ -2953,6 +3042,10 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForestD *forest, int selvar = -1
         if (std::abs(d2j)<(std::abs(1e-3*d2approxj))) continue;  */    
         
         double d2val = weight*drvi*drvj*invpdfsq;
+        if (useseconddrv) {
+          double drv2j = fEvts[iev]->Derivative2(idrv);
+          d2val += -weight*drv2j*invpdf;
+        }
         
         
         
@@ -2981,23 +3074,23 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForestD *forest, int selvar = -1
 
   }
   
-  for (int ithread=0; ithread<fNThreads; ++ithread) {
-    dL += dLs[ithread];
-    d2Lv += d2Lvs[ithread];
-    //d2L += d2Ls[ithread];
-    nmc += nmcs[ithread];
-    
-//     for (int i=0; i<msize; ++i) {
-//       printf("ithread = %i, i = %i, dLs[ithread] = %5e, d2Lvs[ithread] = %5e, d2Lv = %5e\n",ithread,i,dLs[ithread][i],d2Lvs[ithread][i],d2Lv[i]);
-//     }
-    
-    //if (!usematrix) continue;
-
-    
-//     for (std::map<std::pair<int, int>, double>::const_iterator it=d2Lmaps[ithread].begin(); it!=d2Lmaps[ithread].end(); ++it) {
-//       d2Lmap[it->first] += it->second;
-//     }
-  }
+//   for (int ithread=0; ithread<fNThreads; ++ithread) {
+//     dL += dLs[ithread];
+//     //d2Lv += d2Lvs[ithread];
+//     //d2L += d2Ls[ithread];
+//     nmc += nmcs[ithread];
+//     
+// //     for (int i=0; i<msize; ++i) {
+// //       printf("ithread = %i, i = %i, dLs[ithread] = %5e, d2Lvs[ithread] = %5e, d2Lv = %5e\n",ithread,i,dLs[ithread][i],d2Lvs[ithread][i],d2Lv[i]);
+// //     }
+//     
+//     //if (!usematrix) continue;
+// 
+//     
+// //     for (std::map<std::pair<int, int>, double>::const_iterator it=d2Lmaps[ithread].begin(); it!=d2Lmaps[ithread].end(); ++it) {
+// //       d2Lmap[it->first] += it->second;
+// //     }
+//   }
 
   
   int infunc = fFullFuncs.getSize()-1;
@@ -3013,9 +3106,9 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForestD *forest, int selvar = -1
 	
 	dL[iel] += drvi;
 
-	double drv2i = Derivative2(static_cast<RooAbsReal*>(fFullFuncs.at(infunc)),static_cast<RooRealVar*>(fFullParms.at(idrv)),&parmset,1e-3*static_cast<RooRealVar*>(fFullParms.at(idrv))->getError());
+	//double drv2i = Derivative2(static_cast<RooAbsReal*>(fFullFuncs.at(infunc)),static_cast<RooRealVar*>(fFullParms.at(idrv)),&parmset,1e-3*static_cast<RooRealVar*>(fFullParms.at(idrv))->getError());
 	
-	d2Lv[iel] += drv2i;
+	//d2Lv[iel] += drv2i;
         
         if (!usematrix) continue;        
 	

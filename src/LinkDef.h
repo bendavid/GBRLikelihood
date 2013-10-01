@@ -21,6 +21,7 @@
 #pragma link C++ class RooGBRFunction+;
 #pragma link C++ class RooGBRTarget+;
 #pragma link C++ class RooCondAddPdf+;
+#pragma link C++ class RooCondRatioPdf+;
 #pragma link C++ class RooPdfAddReal+;
 #pragma link C++ class RooTreeConvert+;
 #pragma link C++ class RooRealConstraint+;
