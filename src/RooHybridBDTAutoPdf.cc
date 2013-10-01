@@ -2983,7 +2983,7 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForestD *forest, int selvar = -1
       //dLs[ithread][iel] += -weight*drvi*invpdf;
       
       double dval = -weight*drvi*invpdf;
-      #pragma omp atomic update
+      #pragma omp atomic
       dL(iel) += dval;
       
       //double drv2i = fEvts[iev]->Derivative2(idrv);        
