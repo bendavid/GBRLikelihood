@@ -151,6 +151,8 @@ public:
   virtual Int_t getAnalyticalIntegral(RooArgSet& allVars, RooArgSet& analVars, const char* rangeName = 0) const;
   virtual Double_t analyticalIntegral(Int_t code, const char* rangeName = 0) const;
   
+  RooAbsReal *createCDF(const RooArgSet &iset, const RooArgSet &nset = RooArgSet());
+  
 protected:
   
   Double_t evaluate() const;
@@ -165,6 +167,39 @@ private:
   ClassDef(RooCondAddPdf,1)  
   
 };
+
+class RooCondRatioPdf : public RooAbsPdf {
+  
+public:
+  RooCondRatioPdf() {}
+  RooCondRatioPdf(const char *name, const char *title, RooAbsReal &ratio, RooAbsReal &pdfden);
+  RooCondRatioPdf(const RooCondRatioPdf& other, const char* name=0);
+  virtual ~RooCondRatioPdf() {}
+  
+  virtual TObject* clone(const char* newname) const { return new RooCondRatioPdf(*this,newname); }
+  
+  virtual Bool_t selfNormalized() const { return kTRUE; }
+  
+  //virtual ExtendMode extendMode() const { return CanBeExtended ; }  
+
+//   virtual Double_t expectedEvents(const RooArgSet* nset) const { return _norm.arg().getVal(); }
+//   virtual Double_t expectedEvents(const RooArgSet& nset) const { return _norm.arg().getVal(); }  
+  
+  //virtual Int_t getAnalyticalIntegral(RooArgSet& allVars, RooArgSet& analVars, const char* rangeName = 0) const;
+  //virtual Double_t analyticalIntegral(Int_t code, const char* rangeName = 0) const;
+  
+protected:
+  
+  Double_t evaluate() const;
+  
+  RooRealProxy _ratio;
+  RooRealProxy _pdfden;  
+  
+private:
+  ClassDef(RooCondRatioPdf,1)  
+  
+};
+
 
 class RooPdfAddReal : public RooAbsReal {
   
