@@ -66,8 +66,6 @@
 #include "RooCFunction1Binding.h"
 #include "TH1D.h"
 #include "omp.h"
-#include "vdt/vdtMath.h"
-#include <stdlib.h>
 #include <malloc.h>
 #include "../interface/GBRArrayUtils.h"
 #include "../interface/GBRMath.h"
@@ -2983,7 +2981,7 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForestD *forest, int selvar = -1
       //dLs[ithread][iel] += -weight*drvi*invpdf;
       
       double dval = -weight*drvi*invpdf;
-      #pragma omp atomic update
+      #pragma omp atomic
       dL(iel) += dval;
       
       //double drv2i = fEvts[iev]->Derivative2(idrv);        
@@ -3059,7 +3057,7 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForestD *forest, int selvar = -1
         
         
         
-        #pragma omp atomic update
+        #pragma omp atomic
         d2L(iel,jel) += d2val;
         //d2L(iel,jel) += weight*drvi*drvj*invpdfsq;
         

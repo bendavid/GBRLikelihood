@@ -8,7 +8,6 @@
 #include "../interface/RooGaussianFast.h"
 #include "RooRealVar.h"
 #include "RooRealConstant.h"
-#include "vdt/vdtMath.h"
 #include "../interface/GBRMath.h"
 
 using namespace RooFit;

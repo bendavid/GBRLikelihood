@@ -1,14 +1,16 @@
 #include "../interface/GBRArrayUtils.h" 
-#include "vdt/vdtMath.h"
+#include "../interface/GBRMath.h"
 #include <limits>
 #include <algorithm>    
     
 void GBRArrayUtils::InitArrays(int *__restrict__ ns, double *__restrict__ tgts, double *__restrict__ tgt2s, float *__restrict__ bsepgains, const int nbins) {
  
+#if  __GNUC__>4 || (__GNUC__==4 && __GNUC_MINOR__>=7)
   ns = (int*)__builtin_assume_aligned(ns,32);
   tgts = (double*)__builtin_assume_aligned(tgts,32);
   tgt2s = (double*)__builtin_assume_aligned(tgt2s,32);
   bsepgains = (float*)__builtin_assume_aligned(bsepgains,32);
+#endif  
   
   for (int ibin=0; ibin<nbins; ++ibin) {
     ns[ibin] = 0;
@@ -21,7 +23,11 @@ void GBRArrayUtils::InitArrays(int *__restrict__ ns, double *__restrict__ tgts, 
 }
     
 void GBRArrayUtils::ZeroArray(double *__restrict__ wscls, const int nbins) {
+  
+#if  __GNUC__>4 || (__GNUC__==4 && __GNUC_MINOR__>=7)
   wscls = (double*)__builtin_assume_aligned(wscls,32);
+#endif
+  
   for (int ibin=0; ibin<nbins; ++ibin) {
     wscls[ibin] = 0.;
   }
@@ -29,7 +35,9 @@ void GBRArrayUtils::ZeroArray(double *__restrict__ wscls, const int nbins) {
   
 void GBRArrayUtils::MinMaxQuants(int &__restrict__ minquant, int &__restrict__ maxquant, const int *__restrict__ quants, const int nev) {
   
+#if  __GNUC__>4 || (__GNUC__==4 && __GNUC_MINOR__>=7)  
   quants = (const int*)__builtin_assume_aligned(quants,32);
+#endif  
   
   minquant = std::numeric_limits<int>::max();
   maxquant = 0;
@@ -42,7 +50,10 @@ void GBRArrayUtils::MinMaxQuants(int &__restrict__ minquant, int &__restrict__ m
 } 
  
 void GBRArrayUtils::FillBinQuants(int *__restrict__ binquants, const unsigned int offset, const unsigned int pscale, const unsigned int nquantiles, const unsigned int nbins) {
+
+#if  __GNUC__>4 || (__GNUC__==4 && __GNUC_MINOR__>=7)    
   binquants = (int*)__builtin_assume_aligned(binquants,32);
+#endif
     
   for (unsigned int ibin=0; ibin<nbins; ++ibin) { 
     //int scaledbin
@@ -58,9 +69,11 @@ void GBRArrayUtils::FillBinQuants(int *__restrict__ binquants, const unsigned in
  
 void GBRArrayUtils::FillSepGains(const double *__restrict__ sumtgts, const double *__restrict__ sumtgt2s, float *__restrict__ bsepgains, const double fulldiff, const double sumtgt, const double sumtgt2, const int nbins) {
   
+#if __GNUC__>4 || (__GNUC__==4 && __GNUC_MINOR__>=7)  
   sumtgts = (const double*)__builtin_assume_aligned(sumtgts,32);
   sumtgt2s = (const double*)__builtin_assume_aligned(sumtgt2s,32);
   bsepgains = (float*)__builtin_assume_aligned(bsepgains,32);
+#endif  
   
   for (int ibin=0; ibin<nbins; ++ibin) {     
         
