@@ -19,6 +19,8 @@
 #pragma link C++ class HybridGBRTree+;
 #pragma link C++ class HybridGBRForestD+;
 #pragma link C++ class HybridGBRTreeD+;
+#pragma link C++ class RooGBRFunctionFlex+;
+#pragma link C++ class RooGBRTargetFlex+;
 #pragma link C++ class RooGBRFunction+;
 #pragma link C++ class RooGBRTarget+;
 #pragma link C++ class RooCondAddPdf+;

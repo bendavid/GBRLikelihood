@@ -47,6 +47,7 @@
 #include <Math/QuantFuncMathCore.h>
 #include <Math/ProbFunc.h>
 #include "../interface/HybridGBRForestD.h"
+#include "../interface/HybridGBRForestFlex.h"
 #include "TMatrixDSym.h"
 #include "TVectorD.h"
 #include "TDecompChol.h"
@@ -610,6 +611,95 @@ Double_t RooPdfAddReal::analyticalIntegral(Int_t code, const char* rangeName) co
   }
     
   return integral;
+  
+}
+
+
+ClassImp(RooGBRFunctionFlex)
+
+//_____________________________________________________________________________
+RooGBRFunctionFlex::RooGBRFunctionFlex(const char *name, const char *title) :
+  RooAbsReal(name,title),
+  _forest(new HybridGBRForestFlex())
+{
+  
+}
+
+//_____________________________________________________________________________
+RooGBRFunctionFlex::RooGBRFunctionFlex(const RooGBRFunctionFlex& other, const char* name) :
+  RooAbsReal(other,name), 
+  _forest(new HybridGBRForestFlex(*other._forest))
+{
+  
+}
+  
+//_____________________________________________________________________________  
+RooGBRFunctionFlex::~RooGBRFunctionFlex()
+{
+  if (_forest) delete _forest;
+}
+  
+//_____________________________________________________________________________  
+void RooGBRFunctionFlex::SetForest(HybridGBRForestFlex *forest) {
+ 
+  if (_forest) delete _forest;
+  _forest = forest;
+  setValueDirty();
+  
+}
+
+ClassImp(RooGBRTargetFlex)
+
+//_____________________________________________________________________________
+RooGBRTargetFlex::RooGBRTargetFlex(const char *name, const char *title, RooGBRFunctionFlex &func, RooRealVar &var, const RooArgList &funcvars) :
+  RooAbsReal(name,title),
+  _func("func","",this,func,true,false),
+  _var("var","",this,var),
+  _usefunc(false),
+  _funcvars("funcvars","",this),
+  _eval(funcvars.getSize())
+{
+  _funcvars.add(funcvars);
+  Var()->setConstant(_usefunc);
+  
+}
+
+//_____________________________________________________________________________
+RooGBRTargetFlex::RooGBRTargetFlex(const RooGBRTargetFlex& other, const char* name) :
+  RooAbsReal(other,name), 
+  _func("func",this,other._func),  
+  _itgt(other._itgt),
+  _var("var",this,other._var),
+  _usefunc(other._usefunc),
+  _funcvars("funcvars",this,other._funcvars),
+  _eval(other._eval)
+{
+  
+}
+
+//_____________________________________________________________________________
+void RooGBRTargetFlex::SetUseFunc(bool b)
+{
+  
+  if (_usefunc==b) return;
+  
+  _usefunc = b;
+  Var()->setConstant(_usefunc);
+  
+  setValueDirty();
+  setShapeDirty();
+  
+}
+
+//_____________________________________________________________________________
+double RooGBRTargetFlex::EvalFunc() const
+{
+  
+  for (int ivar=0; ivar<_funcvars.getSize(); ++ivar) {
+    _eval[ivar] = static_cast<RooAbsReal*>(_funcvars.at(ivar))->getVal();
+    //printf("ivar = %i, var = %5f\n",ivar,_eval[ivar]);
+  }  
+  return static_cast<RooGBRFunctionFlex*>(_func.absArg())->Forest()->GetResponse(&_eval[0]);
   
 }
 

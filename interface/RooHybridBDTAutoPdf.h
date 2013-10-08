@@ -30,6 +30,7 @@ class RooAbsReal;
 class RooArgSet;
 class HybridGBRForestD;
 class HybridGBRTreeD;
+class HybridGBRForestFlex;
 class TNtuple;
 
 class RooTreeConvert {
@@ -227,6 +228,68 @@ private:
   ClassDef(RooPdfAddReal,1)  
   
 };
+
+class RooGBRFunctionFlex : public RooAbsReal {
+ 
+public:
+  RooGBRFunctionFlex() : _forest(0) {}
+  RooGBRFunctionFlex(const char *name, const char *title);
+  RooGBRFunctionFlex(const RooGBRFunctionFlex& other, const char* name=0);
+  virtual ~RooGBRFunctionFlex();
+  
+  virtual TObject* clone(const char* newname) const { return new RooGBRFunctionFlex(*this,newname); }
+      
+  HybridGBRForestFlex *Forest() { return _forest; }
+  const HybridGBRForestFlex *Forest() const { return _forest; }
+  
+  void SetForest(HybridGBRForestFlex *forest);
+  
+protected:
+  virtual Double_t evaluate() const { return 0.; }
+  
+  HybridGBRForestFlex *_forest;
+  
+private:
+  ClassDef(RooGBRFunctionFlex,1)
+
+  
+  
+};
+
+class RooGBRTargetFlex : public RooAbsReal {
+  
+public:
+  RooGBRTargetFlex() {}
+  RooGBRTargetFlex(const char *name, const char *title, RooGBRFunctionFlex &func, RooRealVar &var, const RooArgList &funcvars);
+  RooGBRTargetFlex(const RooGBRTargetFlex& other, const char* name=0);
+  
+  virtual TObject* clone(const char* newname) const { return new RooGBRTargetFlex(*this,newname); }
+  
+  void SetUseFunc(bool b);
+  
+  RooRealVar *Var() { return (RooRealVar*)(&_var.arg()); }
+  
+protected:
+  virtual Double_t evaluate() const { return _usefunc ? EvalFunc() : _var.arg().getVal(); }
+  //virtual Double_t evaluate() const { return _var.arg().getVal(); }
+  
+  double EvalFunc() const;
+  
+  RooArgProxy _func;
+  int _itgt;
+  RooRealProxy _var;
+  bool _usefunc;
+  
+  RooListProxy _funcvars;  
+  mutable std::vector<float> _eval;
+  
+private:
+    ClassDef(RooGBRTargetFlex,1)
+  
+  
+  
+};
+
 
 class RooGBRFunction : public RooAbsReal {
  
