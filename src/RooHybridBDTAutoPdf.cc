@@ -237,10 +237,12 @@ RooRealConstraint::RooRealConstraint(const char *name, const char *title, RooAbs
 {
 
   RooGBRTarget *tgt = dynamic_cast<RooGBRTarget*>(&real);
+  RooGBRTargetFlex *tgtflex = dynamic_cast<RooGBRTargetFlex*>(&real);
   RooRealVar *var = 0;
   
   
   if (tgt) var = tgt->Var();
+  else if (tgtflex) var = tgtflex->Var();
   else var = dynamic_cast<RooRealVar*>(&real);
   
   
