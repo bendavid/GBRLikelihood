@@ -243,6 +243,7 @@ public:
   const HybridGBRForestFlex *Forest() const { return _forest; }
   
   void SetForest(HybridGBRForestFlex *forest);
+  void ResetForest();
   
 protected:
   virtual Double_t evaluate() const { return 0.; }
@@ -268,6 +269,10 @@ public:
   void SetUseFunc(bool b);
   
   RooRealVar *Var() { return (RooRealVar*)(&_var.arg()); }
+  const RooArgList &FuncVars() const { return _funcvars; }  
+  
+  RooGBRFunctionFlex *Func() { return (RooGBRFunctionFlex*)(_func.absArg()); }
+  HybridGBRForestFlex *Forest() { return Func()->Forest(); }
   
 protected:
   virtual Double_t evaluate() const { return _usefunc ? EvalFunc() : _var.arg().getVal(); }
@@ -360,7 +365,7 @@ class RooHybridBDTAutoPdf : public TNamed {
 public:
   
   //RooHybridBDTAutoPdf() {} ;
-  RooHybridBDTAutoPdf(const char *name, const char *title, RooGBRFunction &func, const RooArgList &tgtvars, RooAbsReal &n0, RooRealVar &r, const std::vector<RooAbsData*> &data, const std::vector<RooAbsReal*> &pdfs);
+  RooHybridBDTAutoPdf(const char *name, const char *title, const RooArgList &tgtvars, RooAbsReal &n0, RooRealVar &r, const std::vector<RooAbsData*> &data, const std::vector<RooAbsReal*> &pdfs);
 
 
   
@@ -380,7 +385,7 @@ public:
   void SetMaxNodes(int max) { fMaxNodes = max; }
   void SetPrescaleInit(int n) { fPrescaleInit = n; }
  
-  const HybridGBRForestD *TrainForest(int ntrees, bool reuseforest = false);  
+  void TrainForest(int ntrees, bool reuseforest = false);  
   
   void fitWithMinosFast();
   void fitWithMinos();
@@ -415,11 +420,11 @@ protected:
   void UpdateTargets(int nvars, int selvar);
   void FillDerivatives();
   
-  void TrainTree(const std::vector<HybridGBREvent*> &evts, double sumwtotal, HybridGBRTreeD &tree, const int nvars, double transition, int depth, std::vector<std::pair<float,float> > limits, int tgtidx=-1);      
-  void BuildLeaf(const std::vector<HybridGBREvent*> &evts, HybridGBRTreeD &tree, int tgtidx);
+  void TrainTree(const std::vector<HybridGBREvent*> &evts, double sumwtotal, HybridGBRTreeD &tree, double transition, int depth, std::vector<std::pair<float,float> > limits, int funcidx);      
+  void BuildLeaf(const std::vector<HybridGBREvent*> &evts, HybridGBRTreeD &tree, const std::vector<int> &tgtidxs);
 
   //void FitResponses(const std::vector<HybridGBREvent*> &evts, double sumwtotal, HybridGBRTreeD &tree);
-  void FitResponses(HybridGBRForestD *forest, int selvar);  
+  void FitResponses(int selvar);  
   
   TMatrixD vmultT(const TVectorD &v, const TVectorD &vT) const;
   double vmult(const TVectorD &vT, const TVectorD &v) const;
@@ -434,7 +439,7 @@ protected:
   static double EvalLossNull(double dummy);
   
   double EvalLossRooFit();
-  double EvalLoss(HybridGBRForestD *forest, double lambda, const TVectorD &dL, int itree=-1);
+  double EvalLoss(double lambda, const TVectorD &dL, int itree=-1);
 
   
   double Derivative1Fast(RooAbsReal *function, double currentval, RooRealVar *var, RooArgSet *nset=0, double step=1e-3);
@@ -455,7 +460,7 @@ protected:
   RooArgList fFullFuncs;
   
   
-  RooGBRFunction *fFunc;
+  //RooGBRFunction *fFunc;
 
   TNtuple *fResTree;
   
@@ -465,6 +470,11 @@ protected:
   
   RooArgList fStaticTgts;
   RooArgList fStaticPdfs;
+  RooArgList fFuncs;
+  
+  std::vector<RooArgList> fFuncTgts;
+  std::vector<RooArgList> fTgtCondVars;
+  std::vector<RooArgList> fFuncCondVars;
   
   std::vector<RooArgList> fCondVarsClones;
   std::vector<RooArgList> fParmVarsClones;

@@ -648,6 +648,13 @@ void RooGBRFunctionFlex::SetForest(HybridGBRForestFlex *forest) {
   
 }
 
+//_____________________________________________________________________________  
+void RooGBRFunctionFlex::ResetForest() {
+ 
+  SetForest(new HybridGBRForestFlex());
+  
+}
+
 ClassImp(RooGBRTargetFlex)
 
 //_____________________________________________________________________________
@@ -833,10 +840,9 @@ RooHybridBDTAutoPdf *gHybridBDTAutoPointer;
 
 
 //_____________________________________________________________________________
-RooHybridBDTAutoPdf::RooHybridBDTAutoPdf(const char *name, const char *title, RooGBRFunction &func, const RooArgList &tgtvars, RooAbsReal &n0, RooRealVar &r, const std::vector<RooAbsData*> &data, const std::vector<RooAbsReal*> &pdfs) :
+RooHybridBDTAutoPdf::RooHybridBDTAutoPdf(const char *name, const char *title, const RooArgList &tgtvars, RooAbsReal &n0, RooRealVar &r, const std::vector<RooAbsData*> &data, const std::vector<RooAbsReal*> &pdfs) :
   TNamed(name,title),
   fTgtVars(tgtvars),
-  fFunc(&func),  
   //fCondVars(fFunc->Vars()),
   fResTree(0),
   fPdfs(pdfs),
@@ -887,12 +893,46 @@ RooHybridBDTAutoPdf::RooHybridBDTAutoPdf(const char *name, const char *title, Ro
   fGarbageCollection.addOwned(*constraint);
   fGarbageCollection.addOwned(*fN0);
   
+  fTgtCondVars.resize(fTgtVars.getSize(),RooArgList());
   
-  
-  
-  for (int ivar=0; ivar<fFunc->Vars().getSize(); ++ivar) {
-    fCondVars.add(*fFunc->Vars().at(ivar));
+  //Fill RooRealVars underlying RooGBRTargetFlex objects, as well as conditional variables and underlying RooGBRFunctionFlex's
+  //Fill also corresponding maps between targets, functions, and variables
+  for (int itgt=0; itgt<fTgtVars.getSize(); ++itgt) {
+    RooGBRTargetFlex *target = static_cast<RooGBRTargetFlex*>(fTgtVars.at(itgt));
+    target->SetUseFunc(false);
+    
+    RooRealVar *var = target->Var();
+    fStaticTgts.add(*var);
+    
+    if (!fFuncs.contains(*target->Func())) {
+      fFuncs.add(*target->Func());
+      fFuncTgts.push_back(RooArgList());
+      fFuncCondVars.push_back(RooArgList());
+    }
+    
+    int ifunc = fFuncs.index(target->Func());
+    
+    fFuncTgts[ifunc].add(*target);
+    
+    
+    const RooArgList &funcvars = target->FuncVars();
+    for (int ifuncvar=0; ifuncvar<funcvars.getSize(); ++ifuncvar) {
+      RooAbsArg *funcvar = funcvars.at(ifuncvar);
+      if ( !fCondVars.contains(*funcvar) ) {
+        fCondVars.add(*funcvar);
+      }
+      if (!fTgtCondVars[itgt].contains(*funcvar)) {
+        fTgtCondVars[itgt].add(*funcvar);
+      }
+      if (!fFuncCondVars[ifunc].contains(*funcvar)) {
+        fFuncCondVars[ifunc].add(*funcvar);
+      }      
+    }
   }
+  
+  for (unsigned int ipdf=0; ipdf<fPdfs.size(); ++ipdf) {
+    fStaticPdfs.add(*fPdfs[ipdf]);
+  }    
   
   //fCondVars.Print("V");
   
@@ -907,29 +947,10 @@ RooHybridBDTAutoPdf::RooHybridBDTAutoPdf(const char *name, const char *title, Ro
   }
   delete allvarss;
   
-  //fParmVars.Print("V");
   
 
   
-  printf("creating shadow pdfs\n");
-  //make static variables shadowing dynamic targets along with corresponding pdf clones
-  for (int ivar=0; ivar<fTgtVars.getSize(); ++ivar) {
-    //double initval = static_cast<RooAbsReal*>(fTgtVars.at(ivar))->getVal();
-    //printf("ivar = %i, initval = %5f\n",ivar,initval);
-    //RooRealVar *var = new RooRealVar(fTgtVars.at(ivar)->GetName(),"",initval);
-    //RooRealVar *var = new RooRealVar(fTgtVars.at(ivar)->GetName(),"",1.0);
-    static_cast<RooGBRTarget*>(fTgtVars.at(ivar))->SetUseFunc(false);
-    RooRealVar *var = static_cast<RooGBRTarget*>(fTgtVars.at(ivar))->Var();
-    //var->setConstant(false);
-    //var->removeRange();
-    //fStaticTgts.addOwned(*var);
-    fStaticTgts.add(*var);
-  }
-  
-  for (unsigned int ipdf=0; ipdf<fPdfs.size(); ++ipdf) {
-    //fStaticPdfs.addOwned(*fPdfs[ipdf]->cloneTree());
-    fStaticPdfs.add(*fPdfs[ipdf]);
-  }  
+
   
 //   for (int ipdf=0; ipdf<fStaticPdfs.getSize(); ++ipdf) {  
 //     fStaticPdfs.at(ipdf)->recursiveRedirectServers(fStaticTgts);
@@ -1462,7 +1483,7 @@ void RooHybridBDTAutoPdf::BuildQuantiles(int nvars, double sumw) {
 }
 
 
-const HybridGBRForestD *RooHybridBDTAutoPdf::TrainForest(int ntrees, bool reuseforest) {
+void RooHybridBDTAutoPdf::TrainForest(int ntrees, bool reuseforest) {
 
   for (int ithread=0; ithread<fNThreads; ++ithread) {
     static_cast<RooAbsReal*>(fClones.at(ithread))->getValV(&fParmSetClones[ithread]);
@@ -1471,7 +1492,10 @@ const HybridGBRForestD *RooHybridBDTAutoPdf::TrainForest(int ntrees, bool reusef
   for (int ivar=0; ivar<fTgtVars.getSize(); ++ivar) {
     static_cast<RooGBRTarget*>(fTgtVars.at(ivar))->SetUseFunc(false);  
   }
-  fFunc->setOperMode(RooAbsArg::AClean);
+  
+  for (int ifunc=0; ifunc<fFuncs.getSize(); ++ifunc) {
+    fFuncs.at(ifunc)->setOperMode(RooAbsArg::AClean);
+  }
   
   for (unsigned int iev=0; iev<fEvts.size(); ++iev) {
     for (int itgt=0; itgt<fNTargets; ++itgt) {
@@ -1499,17 +1523,13 @@ const HybridGBRForestD *RooHybridBDTAutoPdf::TrainForest(int ntrees, bool reusef
   }
   
   RooArgSet cvarset(fCondVars);
-
-  
-  HybridGBRForestD *forest  = 0;
-  if (reuseforest) {
-    forest = fFunc->Forest();
+ 
+  if (!reuseforest) {
+    for (int ifunc=0; ifunc<fFuncs.getSize(); ++ifunc) {
+      static_cast<RooGBRFunctionFlex*>(fFuncs.at(ifunc))->ResetForest();
+    }      
   }
-  else {
-    forest = new HybridGBRForestD(fFunc->Forest()->NTargets());
-  }
-  
-  
+ 
   printf("setting targets\n");
  
   //printf("setting cloned vals\n");
@@ -1542,9 +1562,9 @@ const HybridGBRForestD *RooHybridBDTAutoPdf::TrainForest(int ntrees, bool reusef
     
     
     for (int itgt = 0; itgt<fStaticTgts.getSize(); ++itgt) {
-      int treetgt = static_cast<RooGBRTarget*>(fTgtVars.at(itgt))->Index();
       double initF = static_cast<RooRealVar*>(fStaticTgts.at(itgt))->getVal();
-      forest->SetInitialResponse(treetgt,initF);
+      HybridGBRForestFlex *forest = static_cast<RooGBRTargetFlex*>(fTgtVars.at(itgt))->Forest();
+      forest->SetInitialResponse(initF);
       for (std::vector<HybridGBREvent*>::iterator it=fEvts.begin(); it!=fEvts.end(); ++it) {
 	(*it)->SetTarget(itgt,initF);
       }    
@@ -1578,7 +1598,7 @@ const HybridGBRForestD *RooHybridBDTAutoPdf::TrainForest(int ntrees, bool reusef
 
   
   TVectorD dparnull(fFullParms.getSize());
-  fNLLVal = EvalLoss(forest,0.,dparnull);
+  fNLLVal = EvalLoss(0.,dparnull);
 
   printf("fullparms:\n");
   fFullParms.Print("V");
@@ -1599,47 +1619,30 @@ const HybridGBRForestD *RooHybridBDTAutoPdf::TrainForest(int ntrees, bool reusef
     int maxtreesize = 0;
     int maxtreeidx = 0;
     
-    std::vector<int> treesizes(fNTargets);
+    std::vector<int> treesizes(fFuncs.getSize());
 
-    for (int itgt=0; itgt<fNTargets; ++itgt) {
-      int treetgt = static_cast<RooGBRTarget*>(fTgtVars.at(itgt))->Index();
-      forest->Trees()[treetgt].push_back(HybridGBRTreeD()); 
+    for (int ifunc=0; ifunc<fFuncs.getSize(); ++ifunc) {
+      HybridGBRForestFlex *forest = static_cast<RooGBRFunctionFlex*>(fFuncs.at(ifunc))->Forest();
+      forest->Trees().push_back(HybridGBRTreeD()); 
     }
     
     UpdateTargets(nvars,-1);       
-      
-    for (int ivar=0; ivar<fFullParms.getSize(); ++ivar) {
-    //for (int ivar=fFullParms.getSize()-1; ivar>=0; --ivar) {
-    //for (int ivar=1; ivar<2; ++ivar) {            
-      int itgt = ivar - fExtVars.getSize();
     
-     //UpdateTargets(nvars, ivar);       
-      
-      if (itgt>=0) {
-        int treetgt = static_cast<RooGBRTarget*>(fTgtVars.at(itgt))->Index();
-        HybridGBRTreeD &tree = forest->Trees()[treetgt].back();      
-        TrainTree(fEvts,sumw,tree,nvarstrain,0.,0,limits,itgt);
-        int treesize = tree.Responses().size();
-        treesizes[itgt] = treesize;        
-      }
-      
-      //FitResponses(forest, ivar);
-
+    for (int ifunc=0; ifunc<fFuncs.getSize(); ++ifunc) {
+      HybridGBRForestFlex *forest = static_cast<RooGBRFunctionFlex*>(fFuncs.at(ifunc))->Forest();
+      HybridGBRTreeD &tree = forest->Trees().back();     
+      TrainTree(fEvts,sumw,tree,0.,0,limits,ifunc);
+      int treesize = tree.Responses().size();
+      treesizes[ifunc] = treesize;           
     }
     
-    FitResponses(forest,-1);
-    
-//     for (int ivar=1; ivar<2; ++ivar) {                
-//       FitResponses(forest, ivar);
-//     }
-    
-    
-    
-    for (int itgt=0; itgt<fNTargets; ++itgt) {
-      int treesize = treesizes[itgt];
+    FitResponses(-1);
+     
+    for (int ifunc=0; ifunc<fFuncs.getSize(); ++ifunc) {
+      int treesize = treesizes[ifunc];
       if (treesize>maxtreesize) {
 	maxtreesize = treesize;
-        maxtreeidx = itgt;
+        maxtreeidx = ifunc;
       }      
     }
     
@@ -1685,23 +1688,19 @@ const HybridGBRForestD *RooHybridBDTAutoPdf::TrainForest(int ntrees, bool reusef
 
   }
   
-  fFunc->setOperMode(RooAbsArg::Auto);
   
-//  printf("fNorm = %5f\n",fNorm);
-  //return fully trained HybridGBRForestD
+  for (int ifunc=0; ifunc<fFuncs.getSize(); ++ifunc) {
+    fFuncs.at(ifunc)->setOperMode(RooAbsArg::Auto);
+  }  
   
-  if (reuseforest) {
-    fFunc->setValueDirty();
-  }
-  else {
-    fFunc->SetForest(forest);
-  }
-
+  for (int ifunc=0; ifunc<fFuncs.getSize(); ++ifunc) {
+    fFuncs.at(ifunc)->setValueDirty();
+  }        
+  
   for (int ivar=0; ivar<fTgtVars.getSize(); ++ivar) {
     static_cast<RooGBRTarget*>(fTgtVars.at(ivar))->SetUseFunc(true);  
   }  
   
-  return forest;  
   
 }
  
@@ -1723,14 +1722,10 @@ const HybridGBRForestD *RooHybridBDTAutoPdf::TrainForest(int ntrees, bool reusef
     
   
 //_______________________________________________________________________
-void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, double sumwtotal, HybridGBRTreeD &tree, const int nvars, double transition, int depth, const std::vector<std::pair<float,float> > limits, int tgtidx) {
+void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, double sumwtotal, HybridGBRTreeD &tree, double transition, int depth, const std::vector<std::pair<float,float> > limits, int funcidx) {
   
-  
-  //alignas(32) float floats[128];
-  
-  //float *aarrtest = new float[128];
-  
-  //index of current intermediate node
+  int nvars = fFuncCondVars[funcidx].getSize();  
+
   int thisidx = tree.CutIndices().size();    
   
   //number of events input to node
@@ -1739,46 +1734,6 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
   
   //index of best cut variable
   int bestvar = 0;
-
-  
-//   double sumwd = 0;
-//   double sumnp = 0;
-//   int numprimary = 0;
-//   //int numprimary = nev;
-//   for (int iev = 0; iev<nev; ++iev) {
-//     //if (evts[iev]->Class()==0 && evts[iev]->IsPrimary()) {
-//     if (evts[iev]->Class()==0) {  
-//       sumwd += evts[iev]->Weight();
-//       sumnp += evts[iev]->Weight()*exp(-evts[iev]->Target());
-//     }
-//     if (evts[iev]->IsPrimary()) ++numprimary;
-//   }
-//   
-//   //double avgp = sumnp/sumwd/fNorm;
-//   double avgp = 1.0;
-  
-  
-//   const float *a = (float*)__builtin_assume_aligned(memalign(32,128*sizeof(float)),32);
-//   const float *b = (float*)__builtin_assume_aligned(memalign(32,128*sizeof(float)),32);
-//   float *c = (float*)__builtin_assume_aligned(memalign(32,128*sizeof(float)),32);
-//    
-  
-//   const float *__restrict__ ar = (float*)__builtin_assume_aligned(a,32);
-//   const float *__restrict__ br = (float*)__builtin_assume_aligned(b,32);
-//   float *__restrict__ cr = (float*)__builtin_assume_aligned(c,32);
-  
-
-  
-//   std::vector<int> threadnums(nvars);
-//   std::vector<int> nbinsvar(nvars);
-//   std::vector<double> timesvar(nvars);
-//   
-  //float *__restrict *__restrict__ sumws = _sumws;  
-  
-//   printf("start split search loop\n");
-//   TStopwatch clockloop;
-//   clockloop.Start();
-  
    
   //printf("first parallel loop\n");
   //printf("nev = %i\n",nev);
@@ -1786,14 +1741,33 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
   #pragma omp parallel for
   for (int iev = 0; iev<nev; ++iev) {
     _clss[iev] = evts[iev]->Class();
-    _tgtvals[iev] = evts[iev]->TransTarget(tgtidx);
-    _tgt2vals[iev] = evts[iev]->TransTarget2(tgtidx);
+//     _tgtvals[iev] = evts[iev]->TransTarget(tgtidx);
+//     _tgt2vals[iev] = evts[iev]->TransTarget2(tgtidx);
     _weightvals[iev] = evts[iev]->Weight();
     for (int ivar=0; ivar<nvars; ++ivar) {
       _quants[ivar][iev] = evts[iev]->Quantile(ivar);   
       //printf("quant = %i\n",_quants[ivar][iev]);
     }
-  }  
+  }
+
+  //build map to global variable index
+  std::vector<int> varidxs(nvars);
+  for (int ivar=0; ivar<nvars; ++ivar) {
+    varidxs[ivar] = fCondVars.index(fFuncCondVars[funcidx].at(ivar));
+  }
+  
+  for (int iev = 0; iev<nev; ++iev) {
+    _clss[iev] = evts[iev]->Class();
+//     _tgtvals[iev] = evts[iev]->TransTarget(tgtidx);
+//     _tgt2vals[iev] = evts[iev]->TransTarget2(tgtidx);
+    _weightvals[iev] = evts[iev]->Weight();
+    for (int ivar=0; ivar<nvars; ++ivar) {
+      _quants[ivar][iev] = evts[iev]->Quantile(varidxs[ivar]);   
+      //printf("quant = %i\n",_quants[ivar][iev]);
+    }
+  }
+  
+  
   
   //printf("second parallel loop\n");
   //trivial open-mp based multithreading of loop over input variables
@@ -1853,12 +1827,7 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
     //printf("done quant manipulation\n");
     
     //printf("compute bins\n");
-    
-    //compute reduced bin value for each event using bit-shift operations
-    //This loop should auto-vectorize in appropriate compiler/settings
-//     for (int iev=0;iev<nev;++iev) {
-//       _bins[ivar][iev] = (_quants[ivar][iev]-offset)>>pscale;
-//     }
+   
 
       
     //printf("filling histogram-style arrays\n");
@@ -1876,22 +1845,28 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
       
       int icls = _clss[iev];
       int ibin = (_quants[ivar][iev]-offset)>>pscale;
-      
-      //printf("icls = %i, ibin = %i, weight = %5f, transtarget = %5f, transtarget2 = %5f\n",icls,ibin, evts[iev]->Weight(),evts[iev]->TransTarget(tgtidx),evts[iev]->TransTarget2(tgtidx));
-      
-      //assert(ibin<int(nbins));
-      
+
       ++_ns[ivar][ibin];
       
-      //printf("incrementing wscls: ivar = %i, icls = %i, ibin = %i, quant = %i\n",ivar,icls,ibin,_quants[ivar][iev]);
-      //printf("incrementing wscls\n");
       _wscls[ivar][icls][ibin] += _weightvals[iev];            
       //printf("done incrementing wscls\n");
       
-      _tgts[ivar][ibin] += _tgtvals[iev];
-      _tgt2s[ivar][ibin] += _tgt2vals[iev];
+//       _tgts[ivar][ibin] += _tgtvals[iev];
+//       _tgt2s[ivar][ibin] += _tgt2vals[iev];
       
-    } 
+    }
+    
+    //add derivatives for all targets directly associated with this variable
+    for (int itgt=0; itgt<fFuncTgts[funcidx].getSize(); ++itgt) {
+      if (static_cast<RooGBRTargetFlex*>(fFuncTgts[funcidx].at(itgt))->FuncVars().containsInstance(*fFuncCondVars[funcidx].at(ivar))) {
+        int tgtidx = fTgtVars.index(fFuncTgts[funcidx].at(itgt));
+        for (int iev=0;iev<nev;++iev) {
+          int ibin = (_quants[ivar][iev]-offset)>>pscale;
+          _tgts[ivar][ibin] += evts[iev]->TransTarget(tgtidx);
+          _tgt2s[ivar][ibin] += evts[iev]->TransTarget2(tgtidx);
+        }
+      }
+    }
        
 
       
@@ -1924,50 +1899,20 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
     }    
    // printf("done cls array integrals\n");
     
-    
-    
-    
-    //int n = sumns[ivar][nbins-1];
-//     float sumw = _sumws[ivar][nbins-1];
-//     float sumw2 = _sumws2[ivar][nbins-1];
-//     std::vector<float> sumwscls(fStaticTgts.getSize());
-//     for (int icls=0; icls<ncls; ++icls) {
-//       sumwscls[icls] = _sumwscls[ivar][nbins-1][icls];
-//     }
-    
-    //std::vector<float> sumtgt(fNTargets);
-    //float sumtgtmag2 = 0.;
 
     const double sumtgt = _sumtgts[ivar][nbins-1];
-    //sumtgtmag2 += _sumtgts[ivar][nbins-1]*_sumtgts[ivar][nbins-1];      
     
     const double sumtgt2 = _sumtgt2s[ivar][nbins-1];      
-    //if (sumtgt2<=0.) continue;
-    
-    
-    //weighted variance of target in full dataset
-    //float fullvariance = sumtgt2 - sumtgtmag2/sumw;
-    //float fullvariancevar = fullvariance*fullvariance/sumw2/sumw2;
-    
-    //_fullvars[ivar] = fullvariance;
-    
-   // printf("fullrms = %5f, sumtgt2 = %5f, sumtgt = %5f, sumw = %5f\n",fullrms,sumtgt2,sumtgt,sumw);
+
     
     //printf("short loop\n");
     float maxsepgain = 0.;
     float cutval = 0.;
     int nleft= 0;
     int nright = 0;
-//    float sumwleft=0.;
-  //  float sumwright=0.;
     int bestbin=0;
     
     const double fulldiff = std::min(0.,-0.5*sumtgt*sumtgt*vdt::fast_inv(sumtgt2));
-    //const double fulldiff = std::min(0.,-0.5*sumtgt*sumtgt/sumtgt2);
-    
-
-    
-    //const double fulldiff = -0.5*sumtgt*sumtgt/sumtgt2;
     
     //printf("start heavy loop\n");
     //loop over all bins and compute improvement in weighted variance of target for each split
@@ -1979,46 +1924,7 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
     //This loop cannot auto-vectorize, at least in gcc 4.6x due to the mixed type conditional, but it's relatively fast
     //in any case
     for (unsigned int ibin=0; ibin<nbins; ++ibin) {   
-      //printf("testing split, widthleft = %5f, widthright = %5f, sepgain = %5f\n",_varvals[ivar][ibin] - limits[ivar].first,limits[ivar].second-_varvals[ivar][ibin],_bsepgains[ivar][ibin]);
-//       if (_sumns[ivar][ibin]>=fMinEvents && (nev-_sumns[ivar][ibin])>=fMinEvents && _bsepgains[ivar][ibin]>maxsepgain && _bsepgainsigs[ivar][ibin]>fMinCutSignificance) {
-        //if (_sumws2[ivar][ibin]>=fMinEvents && (sumw2-_sumws2[ivar][ibin])>=fMinEvents && _bsepgains[ivar][ibin]>maxsepgain && _bsepgainsigs[ivar][ibin]>fMinCutSignificance) {
-      //if ( (_varvals[ivar][ibin] - limits[ivar].first)>(0.2*sigmanode) && (limits[ivar].second-_varvals[ivar][ibin])>(0.2*sigmanode) && _sumws2[ivar][ibin]>=fMinEvents && (sumw2-_sumws2[ivar][ibin])>=fMinEvents && _bsepgains[ivar][ibin]>maxsepgain && _bsepgainsigs[ivar][ibin]>fMinCutSignificance) {
-      
-	
 
-	  
-    // if ( (_varvals[ivar][ibin] - limits[ivar].first)>(0.2*sigmanode) && (limits[ivar].second-_varvals[ivar][ibin])>(0.2*sigmanode) && _sumns[ivar][ibin]>=fMinEvents && (numprimary-_sumns[ivar][ibin])>=fMinEvents && _bsepgains[ivar][ibin]>maxsepgain ) {	  
-	
-	//printf("accepted split\n");
-      
-        //printf("sumnleft = %i, sumnright = %i, sepgain = %5f, sepgainsig = %5f\n",_sumns[ivar][ibin], (nev-_sumns[ivar][ibin]),_bsepgains[ivar][ibin],_bsepgainsigs[ivar][ibin]);
-      //if (sumns[ivar][ibin]>=fMinEvents && (nev-sumns[ivar][ibin])>=fMinEvents && bsepgains[ivar][ibin]>maxsepgain) {
-	//if (_sumns[ivar][ibin]>=fMinEvents && (nev-_sumns[ivar][ibin])>=fMinEvents && _bsepgains[ivar][ibin]>maxsepgain && _bsepgainsigs[ivar][ibin]>fMinCutSignificance) {
-      //if (_sumnsd[ivar][ibin]>=fMinEvents && (nevd-_sumnsd[ivar][ibin])>=fMinEvents && _bsepgains[ivar][ibin]>maxsepgain && _bsepgainsigs[ivar][ibin]>fMinCutSignificance) {
-     //if ( (_varvals[ivar][ibin] - limits[ivar].first)>(1.0*sigmanode) && (limits[ivar].second-_varvals[ivar][ibin])>(1.0*sigmanode) && _sumnsd[ivar][ibin]>=fMinEvents && (nevd-_sumnsd[ivar][ibin])>=fMinEvents && (_sumns[ivar][ibin]-_sumnsd[ivar][ibin])>=fMinEvents && (nev-_sumns[ivar][ibin] - nevd + _sumnsd[ivar][ibin])>=fMinEvents && _bsepgains[ivar][ibin]>maxsepgain && _bsepgainsigs[ivar][ibin]>fMinCutSignificance) {
-       
-       
-      //if ( (_varvals[ivar][ibin] - limits[ivar].first)>(0.2*sigmanode) && (limits[ivar].second-_varvals[ivar][ibin])>(0.2*sigmanode) && (_sumns[ivar][ibin]-_sumnsd[ivar][ibin])>=fMinEvents && (numprimary-_sumns[ivar][ibin] - nevd + _sumnsd[ivar][ibin])>=fMinEvents && _bsepgains[ivar][ibin]>maxsepgain && _bsepgainsigs[ivar][ibin]>fMinCutSignificance) {       
-       
-       
-	//if ( (_varvals[ivar][ibin] - limits[ivar].first)>(0.2*sigmanode) && (limits[ivar].second-_varvals[ivar][ibin])>(0.2*sigmanode) && _sumws2[ivar][ibin]>=fMinEvents && (sumw2-_sumws2[ivar][ibin])>=fMinEvents && _bsepgains[ivar][ibin]>maxsepgain ) {       
-       
-       //if (_sumns[ivar][ibin]>=fMinEvents && (nev-_sumns[ivar][ibin])>=fMinEvents && _bsepgains[ivar][ibin]>maxsepgain && _bsepgainsigs[ivar][ibin]>fMinCutSignificance) {
-       //if (_sumws[ivar][ibin]>=fMinEvents && (sumw -_sumws[ivar][ibin])>=fMinEvents && _bsepgains[ivar][ibin]>maxsepgain && _bsepgainsigs[ivar][ibin]>fMinCutSignificance) {
-	 
-       //printf("_bsepgains[ivar][ibin] = %5f, maxsepgain = %5f\n",_bsepgains[ivar][ibin],maxsepgain);
-	 
-       //if (_sumnsd[ivar][ibin]>=fMinEvents && (nevd-_sumnsd[ivar][ibin])>=fMinEvents && _bsepgains[ivar][ibin]>maxsepgain && _bsepgainsigs[ivar][ibin]>fMinCutSignificance) {
-	 
-          
-          
-// 	maxsepgain = _bsepgains[ivar][ibin];
-//         bestbin = ibin;
-      //}
-      
-
-
-      //if ( _bsepgains[ivar][ibin]>maxsepgain && !std::isinf(_bsepgains[ivar][ibin]) && _sumtgt2s[ivar][ibin]>0. && (sumtgt2-_sumtgt2s[ivar][ibin])>0.) {
       if ( _bsepgains[ivar][ibin]>maxsepgain && std::isnormal(_bsepgains[ivar][ibin])) {
 	
 	bool passminweights = true;
@@ -2060,44 +1966,21 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
       
     }
      
-    //printf("ivar = %i, maxsepgain = %5f, left: w0 = %5f, w1 = %5f, right: w0 = %5f, w1 = %5f\n", ivar, maxsepgain, _sumwscls[ivar][bestbin][0],_sumwscls[ivar][bestbin][1],sumwscls[0] - _sumwscls[ivar][bestbin][0],sumwscls[1] - _sumwscls[ivar][bestbin][1]);
-     
-     
-     
     cutval = _varvals[ivar][bestbin];
     nleft = _sumns[ivar][bestbin];
     nright = nev - nleft;
-   // sumwleft = _sumws[ivar][bestbin];
-   // sumwright = sumw - sumwleft;        
-    
     
     _sepgains[ivar] = maxsepgain;
     _sepgainsigs[ivar] = _bsepgainsigs[ivar][bestbin];
     _cutvals[ivar] = cutval;
     _nlefts[ivar] = nleft;
     _nrights[ivar] = nright;
-    //_sumwlefts[ivar] = sumwleft;
-    //_sumwrights[ivar] = sumwright;
-    //_sumtgtlefts[ivar] = _sumtgts[ivar][bestbin];
-    //_sumtgtrights[ivar] = sumtgt - _sumtgts[ivar][bestbin];
-    //_leftvars[ivar] = _sumtgt2s[ivar][bestbin] - _sumtgts[ivar][bestbin]*_sumtgts[ivar][bestbin]/_sumws[ivar][bestbin];
-    //_rightvars[ivar] = (sumtgt2-_sumtgt2s[ivar][bestbin]) - (sumtgt-_sumtgts[ivar][bestbin])*(sumtgt-_sumtgts[ivar][bestbin])/(sumw-_sumws[ivar][bestbin]);
     _bestbins[ivar] = bestbin;
         
      //printf("done var %i\n",ivar);
-//     
-//     watch.Stop();
-//     timesvar[ivar] = watch.RealTime();
   }
   
-//   clockloop.Stop();
-//   printf("end split search loop\n");
-//   
-//   
-//   for (int ivar=0; ivar<nvars; ++ivar) {
-//     printf("ivar = %i, ithread = %i, nbins = %i, time = %5e\n",ivar,threadnums[ivar],nbinsvar[ivar],timesvar[ivar]);
-//   }
-//   printf("clockloop = %5f\n",clockloop.RealTime());
+
   
   float globalsepgain = 0.;
   for (int ivar=0; ivar<nvars; ++ivar) {
@@ -2107,7 +1990,10 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
     }
   }    
   
-  
+  std::vector<int> tgtidxs;
+  for (int itgt=0; itgt<fFuncTgts[funcidx].getSize(); ++itgt) {
+    tgtidxs.push_back(fTgtVars.index(fFuncTgts[funcidx].at(itgt)));
+  }  
   
   //if no appropriate split found, make this node terminal
   if (globalsepgain<=0.) {
@@ -2121,16 +2007,9 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
     tree.RightIndices()[thisidx] = -tree.Responses().size();
     tree.LeftIndices()[thisidx] = -tree.Responses().size();
     
-    BuildLeaf(evts,tree,tgtidx);
+    BuildLeaf(evts,tree,tgtidxs);
     return;
   }
-  
-  //printf("cutval = %5f\n",_cutvals[bestvar]);
-  
-//   TStopwatch buildclock;
-//   buildclock.Start();
-//   
-//   printf("start filling vectors\n");
   
   //fill vectors of event pointers for left and right nodes below this one
   std::vector<HybridGBREvent*> leftevts;
@@ -2160,99 +2039,6 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
     
   }
   
-//   printf("done filling vectors\n");
-//   
-//   buildclock.Stop();
-//   printf("buildclock = %5e\n",buildclock.RealTime());
-  
-//   for (std::vector<HybridGBREvent*>::const_iterator it = evts.begin(); it!=evts.end(); ++it) {
-//     if ((*it)->Var(bestvar)>_cutvals[bestvar]) {
-//       ++nright;
-// //       sumwright += (*it)->Weight();
-// //       rightevts.push_back(*it);
-//     }
-//     else {
-//       ++nleft;
-// //       sumwleft += (*it)->Weight();
-// //       leftevts.push_back(*it);
-//     }
-//     
-//     //double sigma = 0.2;
-//     //double sigma = fSigmaConsts[bestvar]*sqrt(fNorm/exp(-(*it)->Target()));
-//     //double sigma = 0.2;
-//     //double sigma = std::min(0.4,fSigmaConsts[bestvar]*sqrt(fNorm/exp(-(*it)->Target())));
-//     //double sigmanode = fSigmaConsts[ivar]*pow(1.0/avgp,1.0/fCondVars.getSize());
-//     //double sigma = std::min(2.2,fSigmaConsts[bestvar]*pow(fNorm/exp(-(*it)->Target()),1.0/fCondVars.getSize()));
-//     //double sigma = 0.2;
-//     //printf("sigma = %5f\n",sigma);
-//     
-//     double sigma = 1.0;
-//     
-//     double gausxcut = (_cutvals[bestvar]- (*it)->Var(bestvar))/sigma;
-//     double gausxlow = (limits[bestvar].first- (*it)->Var(bestvar))/sigma;
-//     double gausxhi  = (limits[bestvar].second- (*it)->Var(bestvar))/sigma;
-//     
-//     double leftweight;
-//     double rightweight;
-//     
-//     if (1) {   
-//       leftweight = 0.5*(1.0+TMath::Erf(gausxcut/sqrt(2))) - 0.5*(1.0+TMath::Erf(gausxlow/sqrt(2)));
-//       rightweight = 0.5*(1.0+TMath::Erf(gausxhi/sqrt(2))) - 0.5*(1.0+TMath::Erf(gausxcut/sqrt(2)));
-//     }
-//     else {
-//       if ((*it)->Var(bestvar)>_cutvals[bestvar]) {
-//         rightweight = 1.0;
-//         leftweight = 0.;
-//       }
-//       else {
-//         rightweight = 0.0;
-//         leftweight = 1.0;
-//       }
-//     }
-//     
-//     //printf("leftweight = %5f, rightweight = %5f, bestvar = %5f, cutval = %5f, low = %5f, hi = %5f\n",leftweight,rightweight,(*it)->Var(bestvar),_cutvals[bestvar],limits[bestvar].first,limits[bestvar].second);
-//     
-//     const double minweight = 1e-4;
-//     
-//     if (leftweight*(*it)->Weight()<minweight && sumwleft>0.0) {
-//       rightweight += leftweight;
-//       leftweight = 0.;
-//     }
-//     else if (rightweight*(*it)->Weight()<minweight && sumwright>0.0) {
-//       leftweight += rightweight;
-//       rightweight = 0.;
-//     }
-//     
-//     if (leftweight>0.) {
-//       HybridGBREvent *evtleft = new HybridGBREvent(nvars, fNTargets,**it);
-//       evtleft->SetWeight(leftweight*evtleft->Weight());
-//       if ((*it)->Var(bestvar) > _cutvals[bestvar]) evtleft->SetIsPrimary(false);
-//       sumwleft += evtleft->Weight();
-//       leftevts.push_back(evtleft);
-//     }
-//     
-//     if (rightweight>0.) {
-//       HybridGBREvent *evtright = new HybridGBREvent(nvars, fNTargets,**it);
-//       evtright->SetWeight(rightweight*evtright->Weight());
-//       if ((*it)->Var(bestvar) <= _cutvals[bestvar]) evtright->SetIsPrimary(false);
-//       sumwright += evtright->Weight();
-//       rightevts.push_back(evtright);
-//     }
-// 
-//     
-//   }  
-  
- 
-//   float fullres = sqrt(_fullvars[bestvar]/sumwtotal);
-//   float leftres = sqrt(_leftvars[bestvar]/sumwleft);
-//   float rightres = sqrt(_rightvars[bestvar]/sumwright);
-//  
-//   float fullmean = (_sumtgtlefts[bestvar] + _sumtgtrights[bestvar])/sumwtotal;
-//   float leftmean = _sumtgtlefts[bestvar]/sumwleft;
-//   float rightmean = _sumtgtrights[bestvar]/sumwright;
-  
-  
-  //printf("thisidx = %i, bestvar = %i, cutval = %5f, n = %i, nleft = %i, nright = %i, fullres = %5f, leftres = %5f, rightres = %5f, fullmean = %5f, leftmean = %5f, rightmrean = %5f, leftsepgain = %5f, sepgainsig = %5f\n",thisidx,bestvar,_cutvals[bestvar],nev,_nlefts[bestvar],_nrights[bestvar],fullres,leftres,rightres,fullmean, leftmean, rightmean, _sepgains[bestvar],_sepgainsigs[bestvar]);
   
   assert(_nlefts[bestvar]==nleft);
   assert(_nrights[bestvar]==nright);
@@ -2262,8 +2048,21 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
   
   double bestcutval = _cutvals[bestvar];
   
+  //find cut index
+  int bestcutidx = 0;
+  for (int itgt=0; itgt<fFuncTgts[funcidx].getSize(); ++itgt) {
+    int cutidx = static_cast<RooGBRTargetFlex*>(fFuncTgts[funcidx].at(itgt))->FuncVars().index(fFuncCondVars[funcidx].at(bestvar));
+    if (cutidx>=0) {
+      bestcutidx = cutidx;
+      break;
+    }
+  }
+
+
+  
+  
   //fill intermediate node
-  tree.CutIndices().push_back(bestvar);
+  tree.CutIndices().push_back(bestcutidx);
   tree.CutVals().push_back(_cutvals[bestvar]);
   tree.LeftIndices().push_back(0);   
   tree.RightIndices().push_back(0);  
@@ -2278,13 +2077,13 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
   
   //build left node as appropriate
   std::vector<std::pair<float,float> > limitsleft(limits);
-  limitsleft[bestvar].second = bestcutval;  
+  limitsleft[bestcutidx].second = bestcutval;  
   //printf("bestvar = %i, limlow = %5f, limhigh = %5f, limleftlow = %5f, limlefthigh = %5f\n",bestvar,limits[bestvar].first,limits[bestvar].second,limitsleft[bestvar].first,limitsleft[bestvar].second);
   if (termleft) {  
-    BuildLeaf(leftevts,tree,tgtidx);
+    BuildLeaf(leftevts,tree,tgtidxs);
   }
   else {  
-    TrainTree(leftevts,sumwleft,tree,nvars,transition,depth+1,limitsleft,tgtidx);  
+    TrainTree(leftevts,sumwleft,tree,transition,depth+1,limitsleft,funcidx);  
   }
   
   //check if right node is terminal
@@ -2297,13 +2096,13 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
   
   //build right node as appropriate
   std::vector<std::pair<float,float> > limitsright(limits);
-  limitsright[bestvar].first = bestcutval;  
+  limitsright[bestcutidx].first = bestcutval;  
   //printf("bestvar = %i, limlow = %5f, limhigh = %5f, limrightlow = %5f, limrighthigh = %5f\n",bestvar, limits[bestvar].first,limits[bestvar].second,limitsright[bestvar].first,limitsright[bestvar].second);  
   if (termright) {  
-    BuildLeaf(rightevts,tree,tgtidx);
+    BuildLeaf(rightevts,tree,tgtidxs);
   }
   else {      
-    TrainTree(rightevts,sumwright,tree,nvars,transition,depth+1,limitsright, tgtidx);  
+    TrainTree(rightevts,sumwright,tree,transition,depth+1,limitsright, funcidx);  
   }
   
 }
@@ -2314,7 +2113,7 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
 
 
 //_______________________________________________________________________
-void RooHybridBDTAutoPdf::BuildLeaf(const std::vector<HybridGBREvent*> &evts, HybridGBRTreeD &tree, int tgtidx) {
+void RooHybridBDTAutoPdf::BuildLeaf(const std::vector<HybridGBREvent*> &evts, HybridGBRTreeD &tree, const std::vector<int> &tgtidxs) {
 
   //printf("building leaf\n");
   
@@ -2322,9 +2121,11 @@ void RooHybridBDTAutoPdf::BuildLeaf(const std::vector<HybridGBREvent*> &evts, Hy
     
   tree.Responses().push_back(0.);
   
-  for (std::vector<HybridGBREvent*>::const_iterator it = evts.begin(); it!=evts.end(); ++it) {    
-    (*it)->SetCurrentNode(tgtidx, -thisidx);
-  }   
+  for (unsigned int itgt=0; itgt<tgtidxs.size(); ++itgt) {
+    for (std::vector<HybridGBREvent*>::const_iterator it = evts.begin(); it!=evts.end(); ++it) {    
+      (*it)->SetCurrentNode(tgtidxs[itgt], -thisidx);
+    }   
+  }
   
 }
 
@@ -2420,7 +2221,7 @@ double RooHybridBDTAutoPdf::EvalLossRooFit() {
   
 }
 
-double RooHybridBDTAutoPdf::EvalLoss(HybridGBRForestD *forest, double lambda, const TVectorD &dL, int itree) {
+double RooHybridBDTAutoPdf::EvalLoss(double lambda, const TVectorD &dL, int itree) {
  
  // int tgtidx = itree%fNTargets;
   
@@ -2433,13 +2234,13 @@ double RooHybridBDTAutoPdf::EvalLoss(HybridGBRForestD *forest, double lambda, co
 // 
   
   int nparms = nextvars;
-  std::vector<int> localidxs(fNTargets);
-  for (int itgt=0; itgt<fNTargets; ++itgt) {
-    localidxs[itgt] = nparms;
-    int treetgt = static_cast<RooGBRTarget*>(fTgtVars.at(itgt))->Index();
-    
-    if (forest->Trees()[treetgt].size() && forest->Trees()[treetgt].back().Responses().size()) {
-      nparms += forest->Trees()[treetgt].back().Responses().size();
+  std::vector<int> localidxs(fFuncs.getSize());
+  for (int ifunc=0; ifunc<fFuncs.getSize(); ++ifunc) {
+    localidxs[ifunc] = nparms;
+    HybridGBRForestFlex *forest = static_cast<RooGBRFunctionFlex*>(fFuncs.at(ifunc))->Forest();
+        
+    if (forest->Trees().size() && forest->Trees().back().Responses().size()) {
+      nparms += forest->Trees().back().Responses().size();
     }
     else {
       nparms += 1;    
@@ -2512,7 +2313,8 @@ double RooHybridBDTAutoPdf::EvalLoss(HybridGBRForestD *forest, double lambda, co
     }    
 
     for (int itgt=0; itgt<fNTargets; ++itgt) {
-      int iel = localidxs[itgt] + fEvts[ievt]->CurrentNode(itgt);
+      int ifunc = fFuncs.index(static_cast<RooGBRTargetFlex*>(fTgtVars.at(itgt))->Func());
+      int iel = localidxs[ifunc] + fEvts[ievt]->CurrentNode(itgt);
       static_cast<RooRealVar*>(fStaticTgtsClones[ithread].at(itgt))->setVal(fEvts[ievt]->Target(itgt) + lambda*dL[iel]);
     }
     
@@ -2958,7 +2760,7 @@ void RooHybridBDTAutoPdf::FillDerivatives() {
 }
 
 
-void RooHybridBDTAutoPdf::FitResponses(HybridGBRForestD *forest, int selvar = -1) {
+void RooHybridBDTAutoPdf::FitResponses(int selvar = -1) {
 
   printf("fit responses, selvar = %i\n",selvar);
 
@@ -2968,19 +2770,18 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForestD *forest, int selvar = -1
     
   //printf("build indexes\n");
   int nparms = nextvars;
-  std::vector<int> localidxs(fNTargets);
-  for (int itgt=0; itgt<fNTargets; ++itgt) {
-    localidxs[itgt] = nparms;
-    int treetgt = static_cast<RooGBRTarget*>(fTgtVars.at(itgt))->Index();
-    
-    if (forest->Trees()[treetgt].size() && forest->Trees()[treetgt].back().Responses().size()) {
-      nparms += forest->Trees()[treetgt].back().Responses().size();
+  std::vector<int> localidxs(fFuncs.getSize());
+  for (int ifunc=0; ifunc<fFuncs.getSize(); ++ifunc) {
+    localidxs[ifunc] = nparms;
+    HybridGBRForestFlex *forest = static_cast<RooGBRFunctionFlex*>(fFuncs.at(ifunc))->Forest();
+        
+    if (forest->Trees().size() && forest->Trees().back().Responses().size()) {
+      nparms += forest->Trees().back().Responses().size();
     }
     else {
       nparms += 1;    
     }
-    
-  }
+  }  
   //printf("done build indexes\n");
   
 
@@ -3061,8 +2862,9 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForestD *forest, int selvar = -1
       
       int idrv = ivar;
       int itgt = ivar - fExtVars.getSize(); 
+      int ifunc = fFuncs.index(static_cast<RooGBRTargetFlex*>(fTgtVars.at(itgt))->Func());
       int iel;
-      if (itgt>=0) iel = localidxs[itgt] + fEvts[iev]->CurrentNode(itgt);
+      if (itgt>=0) iel = localidxs[ifunc] + fEvts[iev]->CurrentNode(itgt);
       else iel = idxglobal + ivar;
 
       
@@ -3108,8 +2910,9 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForestD *forest, int selvar = -1
 	int jvar = fOuterIndices[evcls][jidx];
 	int jdrv = jvar;
 	int jtgt = jvar - fExtVars.getSize();
+        int jfunc = fFuncs.index(static_cast<RooGBRTargetFlex*>(fTgtVars.at(jtgt))->Func());        
 	int jel;      
-	if (jtgt>=0) jel = localidxs[jtgt] + fEvts[iev]->CurrentNode(jtgt);
+	if (jtgt>=0) jel = localidxs[jfunc] + fEvts[iev]->CurrentNode(jtgt);
 	else jel = idxglobal + jvar;    
 	
 	
@@ -3300,13 +3103,13 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForestD *forest, int selvar = -1
     double nllval = fNLLVal;
     
     while (stepg==0.) {
-      double upnllval = EvalLoss(forest,drvstep,dparg);
+      double upnllval = EvalLoss(drvstep,dparg);
       if (!std::isnormal(upnllval)) {
         drvstep /= 2.0;
         continue;
       }
         
-      double downnllval = EvalLoss(forest,-drvstep,dparg);
+      double downnllval = EvalLoss(-drvstep,dparg);
       if (!std::isnormal(downnllval)) {
         drvstep /= 2.0;
         continue;
@@ -3337,7 +3140,7 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForestD *forest, int selvar = -1
 //       step = 1e-8;      
 //     }
     
-    nllval = EvalLoss(forest,step,dpar);
+    nllval = EvalLoss(step,dpar);
     printf("step = %5f, nllval = %5f, fNLLVal = %5f\n",step,nllval,fNLLVal);
     //if (std::isnormal(nllval)) break;
 
@@ -3393,24 +3196,21 @@ void RooHybridBDTAutoPdf::FitResponses(HybridGBRForestD *forest, int selvar = -1
       cloneparm->setError(static_cast<RooRealVar*>(fExtVars.at(ivar))->getError());
     }
   }    
-  
-  int seltgt = selvar - fExtVars.getSize();
-  
-  for (int itgt=0; itgt<fNTargets; ++itgt) {
-    if (selvar>=0 && itgt!=seltgt) continue;
-    int treetgt = static_cast<RooGBRTarget*>(fTgtVars.at(itgt))->Index();
-    int nterm = forest->Trees()[treetgt].back().Responses().size();
+    
+  for (int ifunc=0; ifunc<fFuncs.getSize(); ++ifunc) {
+    HybridGBRForestFlex *forest = static_cast<RooGBRFunctionFlex*>(fFuncs.at(ifunc))->Forest();
+    int nterm = forest->Trees().back().Responses().size();
     for (int iterm=0; iterm<nterm; ++iterm) {
-      forest->Trees()[treetgt].back().Responses()[iterm] = forest->Trees()[treetgt].back().Responses()[iterm] + step*dpar(localidxs[itgt] + iterm);
+      forest->Trees().back().Responses()[iterm] = forest->Trees().back().Responses()[iterm] + step*dpar(localidxs[ifunc] + iterm);
     }
   }
   
   
   for (std::vector<HybridGBREvent*>::const_iterator it = fEvts.begin(); it!=fEvts.end(); ++it) {
     for (int itgt=0; itgt<fNTargets; ++itgt) {
-      if (selvar>=0 && itgt!=seltgt) continue;
+      int ifunc = fFuncs.index(static_cast<RooGBRTargetFlex*>(fTgtVars.at(itgt))->Func());      
       int termidx = (*it)->CurrentNode(itgt);
-      (*it)->SetTarget(itgt,(*it)->Target(itgt)+step*dpar(localidxs[itgt] + termidx));
+      (*it)->SetTarget(itgt,(*it)->Target(itgt)+step*dpar(localidxs[ifunc] + termidx));
     }
   }  
 
@@ -3440,8 +3240,9 @@ void RooHybridBDTAutoPdf::RecomputeTargets() {
     }
     
     for (int itgt=0; itgt<fStaticTgts.getSize(); ++itgt) {
-      int treetgt = static_cast<RooGBRTarget*>(fTgtVars.at(itgt))->Index();
-      fEvts[ievt]->SetTarget(itgt, fFunc->Forest()->GetResponse(&evalvectors[ithread][0],treetgt));
+      RooGBRTargetFlex *target = static_cast<RooGBRTargetFlex*>(fTgtVars.at(itgt));
+      fEvts[ievt]->SetTarget(itgt, target->Forest()->GetResponse(&evalvectors[ithread][0]));
+      //fEvts[ievt]->SetTarget(itgt, fFunc->Forest()->GetResponse(&evalvectors[ithread][0],treetgt));
     }
     
   }
@@ -3454,7 +3255,8 @@ void RooHybridBDTAutoPdf::GradientMinos() {
 //     SetMinCutSignificance(1.0);
 //     TrainForest(1e6,true);
 //     return; 
-  
+
+#if 0
     //save initial state
     HybridGBRForestD *origforest = new HybridGBRForestD(*fFunc->Forest());
     std::vector<double> extvals(fExtVars.getSize());
@@ -3627,6 +3429,8 @@ void RooHybridBDTAutoPdf::GradientMinos() {
       static_cast<RooRealVar*>(fExtVars.at(ivar))->setVal(extvals[ivar]);
     }
     fR->setError(rerr);
+    
+#endif
     
     return;
   
