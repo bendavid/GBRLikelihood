@@ -2,6 +2,7 @@
 #include "../interface/HybridGBRForest.h"
 #include "../interface/HybridGBRTreeD.h"
 #include "../interface/HybridGBRForestD.h"
+#include "../interface/HybridGBRForestFlex.h"
 #include "../interface/RooHybridBDTAutoPdf.h"
 #include "../interface/RooDoubleCBFast.h"
 #include "../interface/RooCBFast.h"
@@ -32,6 +33,7 @@
 #pragma link C++ class RooRevCBFast+;
 #pragma link C++ class RooCBExp+;
 #pragma link C++ class RooGaussianFast+;
+#pragma link C++ class HybridGBRForestFlex+;
 
  
 
