@@ -421,8 +421,10 @@ protected:
   void UpdateTargets(int nvars, int selvar);
   void FillDerivatives();
   
-  void TrainTree(const std::vector<HybridGBREvent*> &evts, double sumwtotal, HybridGBRTreeD &tree, double transition, int depth, std::vector<std::pair<float,float> > limits, int funcidx);      
-  void BuildLeaf(const std::vector<HybridGBREvent*> &evts, HybridGBRTreeD &tree, const std::vector<int> &tgtidxs);
+  void TrainTree(const std::vector<HybridGBREvent*> &evts, double sumwtotal, HybridGBRTreeD &tree, double transition, int depth, std::vector<std::pair<float,float> > limits, int tgtidx);      
+  void BuildLeaf(const std::vector<HybridGBREvent*> &evts, HybridGBRTreeD &tree, int tgtidx);
+  void UpdateCurrentNodes(const std::vector<HybridGBREvent*> &evts, HybridGBRTreeD &tree, int tgtidx);
+  
 
   //void FitResponses(const std::vector<HybridGBREvent*> &evts, double sumwtotal, HybridGBRTreeD &tree);
   void FitResponses(int selvar);  

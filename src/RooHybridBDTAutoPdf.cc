@@ -1634,9 +1634,25 @@ void RooHybridBDTAutoPdf::TrainForest(int ntrees, bool reuseforest) {
     for (int ifunc=0; ifunc<fFuncs.getSize(); ++ifunc) {
       HybridGBRForestFlex *forest = static_cast<RooGBRFunctionFlex*>(fFuncs.at(ifunc))->Forest();
       HybridGBRTreeD &tree = forest->Trees().back();     
-      TrainTree(fEvts,sumw,tree,0.,0,limits,ifunc);
+      
+      //modulate through targets associated to this function
+      int nfunctgts = fFuncTgts[ifunc].getSize();
+      int seltgt = itree%nfunctgts;
+      int tgtidx = fTgtVars.index(fFuncTgts[ifunc].at(seltgt));
+      TrainTree(fEvts,sumw,tree,0.,0,limits,tgtidx);
+      
       int treesize = tree.Responses().size();
       treesizes[ifunc] = treesize;           
+      
+      //Set Terminal nodes for unselected targets belonging to this function
+      for (int itgt=0; itgt<nfunctgts; ++itgt) {
+        if (itgt!=seltgt) {
+          int updtgt = fTgtVars.index(fFuncTgts[ifunc].at(itgt));
+          UpdateCurrentNodes(fEvts,tree,updtgt);
+        }
+      }      
+      
+
     }
     
     FitResponses(-1);
@@ -1720,9 +1736,11 @@ void RooHybridBDTAutoPdf::TrainForest(int ntrees, bool reuseforest) {
     
   
 //_______________________________________________________________________
-void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, double sumwtotal, HybridGBRTreeD &tree, double transition, int depth, const std::vector<std::pair<float,float> > limits, int funcidx) {
+void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, double sumwtotal, HybridGBRTreeD &tree, double transition, int depth, const std::vector<std::pair<float,float> > limits, int tgtidx) {
   
-  int nvars = fFuncCondVars[funcidx].getSize();  
+  const RooGBRTargetFlex *target = static_cast<RooGBRTargetFlex*>(fTgtVars.at(tgtidx));
+  
+  int nvars = target->FuncVars().getSize();  
 
   int thisidx = tree.CutIndices().size();    
   
@@ -1733,40 +1751,28 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
   //index of best cut variable
   int bestvar = 0;
    
+
+
+  //build map to global variable index
+  std::vector<int> varidxs(nvars);
+  for (int ivar=0; ivar<nvars; ++ivar) {
+    varidxs[ivar] = fCondVars.index(target->FuncVars().at(ivar));
+  }
+  
   //printf("first parallel loop\n");
   //printf("nev = %i\n",nev);
   //fill temporary array of quantiles (to allow auto-vectorization of later loops)
   #pragma omp parallel for
   for (int iev = 0; iev<nev; ++iev) {
     _clss[iev] = evts[iev]->Class();
-//     _tgtvals[iev] = evts[iev]->TransTarget(tgtidx);
-//     _tgt2vals[iev] = evts[iev]->TransTarget2(tgtidx);
-    _weightvals[iev] = evts[iev]->Weight();
-    for (int ivar=0; ivar<nvars; ++ivar) {
-      _quants[ivar][iev] = evts[iev]->Quantile(ivar);   
-      //printf("quant = %i\n",_quants[ivar][iev]);
-    }
-  }
-
-  //build map to global variable index
-  std::vector<int> varidxs(nvars);
-  for (int ivar=0; ivar<nvars; ++ivar) {
-    varidxs[ivar] = fCondVars.index(fFuncCondVars[funcidx].at(ivar));
-  }
-  
-  for (int iev = 0; iev<nev; ++iev) {
-    _clss[iev] = evts[iev]->Class();
-//     _tgtvals[iev] = evts[iev]->TransTarget(tgtidx);
-//     _tgt2vals[iev] = evts[iev]->TransTarget2(tgtidx);
+    _tgtvals[iev] = evts[iev]->TransTarget(tgtidx);
+    _tgt2vals[iev] = evts[iev]->TransTarget2(tgtidx);
     _weightvals[iev] = evts[iev]->Weight();
     for (int ivar=0; ivar<nvars; ++ivar) {
       _quants[ivar][iev] = evts[iev]->Quantile(varidxs[ivar]);   
-      //printf("quant = %i\n",_quants[ivar][iev]);
     }
-  }
-  
-  
-  
+  }  
+    
   //printf("second parallel loop\n");
   //trivial open-mp based multithreading of loop over input variables
   //The loop is thread safe since each iteration writes into its own
@@ -1849,24 +1855,11 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
       _wscls[ivar][icls][ibin] += _weightvals[iev];            
       //printf("done incrementing wscls\n");
       
-//       _tgts[ivar][ibin] += _tgtvals[iev];
-//       _tgt2s[ivar][ibin] += _tgt2vals[iev];
+      _tgts[ivar][ibin] += _tgtvals[iev];
+      _tgt2s[ivar][ibin] += _tgt2vals[iev];
       
     }
     
-    //add derivatives for all targets directly associated with this variable
-    for (int itgt=0; itgt<fFuncTgts[funcidx].getSize(); ++itgt) {
-      if (static_cast<RooGBRTargetFlex*>(fFuncTgts[funcidx].at(itgt))->FuncVars().containsInstance(*fFuncCondVars[funcidx].at(ivar))) {
-        int tgtidx = fTgtVars.index(fFuncTgts[funcidx].at(itgt));
-        for (int iev=0;iev<nev;++iev) {
-          int ibin = (_quants[ivar][iev]-offset)>>pscale;
-          _tgts[ivar][ibin] += evts[iev]->TransTarget(tgtidx);
-          _tgt2s[ivar][ibin] += evts[iev]->TransTarget2(tgtidx);
-        }
-      }
-    }
-       
-
       
     //printf("starting split search\n");
  
@@ -1987,12 +1980,7 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
       bestvar = ivar;
     }
   }    
-  
-  std::vector<int> tgtidxs;
-  for (int itgt=0; itgt<fFuncTgts[funcidx].getSize(); ++itgt) {
-    tgtidxs.push_back(fTgtVars.index(fFuncTgts[funcidx].at(itgt)));
-  }  
-  
+    
   //if no appropriate split found, make this node terminal
   if (globalsepgain<=0.) {
     //no valid split found, making this node a leaf node
@@ -2005,7 +1993,7 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
     tree.RightIndices()[thisidx] = -tree.Responses().size();
     tree.LeftIndices()[thisidx] = -tree.Responses().size();
     
-    BuildLeaf(evts,tree,tgtidxs);
+    BuildLeaf(evts,tree,tgtidx);
     return;
   }
   
@@ -2044,23 +2032,10 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
   //printf("nleft = %i, nright = %i\n",nleft,nright);
   
   
-  double bestcutval = _cutvals[bestvar];
-  
-  //find cut index
-  int bestcutidx = 0;
-  for (int itgt=0; itgt<fFuncTgts[funcidx].getSize(); ++itgt) {
-    int cutidx = static_cast<RooGBRTargetFlex*>(fFuncTgts[funcidx].at(itgt))->FuncVars().index(fFuncCondVars[funcidx].at(bestvar));
-    if (cutidx>=0) {
-      bestcutidx = cutidx;
-      break;
-    }
-  }
-
-
-  
+  double bestcutval = _cutvals[bestvar];  
   
   //fill intermediate node
-  tree.CutIndices().push_back(bestcutidx);
+  tree.CutIndices().push_back(bestvar);
   tree.CutVals().push_back(_cutvals[bestvar]);
   tree.LeftIndices().push_back(0);   
   tree.RightIndices().push_back(0);  
@@ -2075,13 +2050,13 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
   
   //build left node as appropriate
   std::vector<std::pair<float,float> > limitsleft(limits);
-  limitsleft[bestcutidx].second = bestcutval;  
+  limitsleft[bestvar].second = bestcutval;  
   //printf("bestvar = %i, limlow = %5f, limhigh = %5f, limleftlow = %5f, limlefthigh = %5f\n",bestvar,limits[bestvar].first,limits[bestvar].second,limitsleft[bestvar].first,limitsleft[bestvar].second);
   if (termleft) {  
-    BuildLeaf(leftevts,tree,tgtidxs);
+    BuildLeaf(leftevts,tree,tgtidx);
   }
   else {  
-    TrainTree(leftevts,sumwleft,tree,transition,depth+1,limitsleft,funcidx);  
+    TrainTree(leftevts,sumwleft,tree,transition,depth+1,limitsleft,tgtidx);  
   }
   
   //check if right node is terminal
@@ -2094,13 +2069,13 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
   
   //build right node as appropriate
   std::vector<std::pair<float,float> > limitsright(limits);
-  limitsright[bestcutidx].first = bestcutval;  
+  limitsright[bestvar].first = bestcutval;  
   //printf("bestvar = %i, limlow = %5f, limhigh = %5f, limrightlow = %5f, limrighthigh = %5f\n",bestvar, limits[bestvar].first,limits[bestvar].second,limitsright[bestvar].first,limitsright[bestvar].second);  
   if (termright) {  
-    BuildLeaf(rightevts,tree,tgtidxs);
+    BuildLeaf(rightevts,tree,tgtidx);
   }
   else {      
-    TrainTree(rightevts,sumwright,tree,transition,depth+1,limitsright, funcidx);  
+    TrainTree(rightevts,sumwright,tree,transition,depth+1,limitsright, tgtidx);  
   }
   
 }
@@ -2111,7 +2086,7 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
 
 
 //_______________________________________________________________________
-void RooHybridBDTAutoPdf::BuildLeaf(const std::vector<HybridGBREvent*> &evts, HybridGBRTreeD &tree, const std::vector<int> &tgtidxs) {
+void RooHybridBDTAutoPdf::BuildLeaf(const std::vector<HybridGBREvent*> &evts, HybridGBRTreeD &tree, int tgtidx) {
 
   //printf("building leaf\n");
   
@@ -2119,15 +2094,46 @@ void RooHybridBDTAutoPdf::BuildLeaf(const std::vector<HybridGBREvent*> &evts, Hy
     
   tree.Responses().push_back(0.);
   
-  for (unsigned int itgt=0; itgt<tgtidxs.size(); ++itgt) {
-    for (std::vector<HybridGBREvent*>::const_iterator it = evts.begin(); it!=evts.end(); ++it) {    
-      (*it)->SetCurrentNode(tgtidxs[itgt], -thisidx);
-    }   
+  for (std::vector<HybridGBREvent*>::const_iterator it = evts.begin(); it!=evts.end(); ++it) {
+    (*it)->SetCurrentNode(tgtidx, -thisidx);
   }
   
 }
 
+//_______________________________________________________________________
+void RooHybridBDTAutoPdf::UpdateCurrentNodes(const std::vector<HybridGBREvent*> &evts, HybridGBRTreeD &tree, int tgtidx) {
+  
+  //update current node directly from GBRTree (needed for targets which have been skipped during tree growth)
+  
+  const RooGBRTargetFlex *target = static_cast<RooGBRTargetFlex*>(fTgtVars.at(tgtidx));
+  int nvars = target->FuncVars().getSize();
+  
+  //build map to global variable index
+  std::vector<int> varidxs(nvars);
+  for (int ivar=0; ivar<nvars; ++ivar) {
+    varidxs[ivar] = fCondVars.index(target->FuncVars().at(ivar));
+  }  
+  
+  std::vector<std::vector<float> > evals(fNThreads,std::vector<float>(nvars,0.));
 
+  int nev = evts.size();  
+  
+  #pragma omp parallel for
+  for (int iev=0; iev<nev; ++iev) {    
+    int ithread =  omp_get_thread_num();
+
+    for (int ivar=0; ivar<nvars; ++ivar) {
+      evals[ithread][ivar] = evts[iev]->Var(varidxs[ivar]);
+    }
+    
+    int termidx = tree.TerminalIndex(&evals[ithread][0]);
+    
+    assert(termidx<int(tree.Responses().size()));
+    
+    evts[iev]->SetCurrentNode(tgtidx, termidx);
+  }
+  
+}
 
 
 
@@ -2946,10 +2952,16 @@ void RooHybridBDTAutoPdf::FitResponses(int selvar = -1) {
 //           continue;
 //         }
         
+        int ielf = iel;
+        int jelf = jel;
+        if (ielf>jelf) {
+          ielf = jelf;
+          jelf = ielf;
+        }
         
         
         #pragma omp atomic
-        d2L(iel,jel) += d2val;
+        d2L(ielf,jelf) += d2val;
         //d2L(iel,jel) += weight*drvi*drvj*invpdfsq;
         
         //d2Lmaps[ithread][std::pair<int,int>(iel,jel)] += weight*drvi*drvj*invpdfsq;
