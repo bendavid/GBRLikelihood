@@ -1496,10 +1496,6 @@ void RooHybridBDTAutoPdf::TrainForest(int ntrees, bool reuseforest) {
     static_cast<RooGBRTarget*>(fTgtVars.at(ivar))->SetUseFunc(false);  
   }
   
-  for (int ifunc=0; ifunc<fFuncs.getSize(); ++ifunc) {
-    fFuncs.at(ifunc)->setOperMode(RooAbsArg::AClean);
-  }
-  
   for (unsigned int iev=0; iev<fEvts.size(); ++iev) {
     for (int itgt=0; itgt<fNTargets; ++itgt) {
       fEvts.at(iev)->SetCurrentNode(itgt,0);
@@ -1694,12 +1690,7 @@ void RooHybridBDTAutoPdf::TrainForest(int ntrees, bool reuseforest) {
     }
 
   }
-  
-  
-  for (int ifunc=0; ifunc<fFuncs.getSize(); ++ifunc) {
-    fFuncs.at(ifunc)->setOperMode(RooAbsArg::Auto);
-  }  
-  
+   
   for (int ifunc=0; ifunc<fFuncs.getSize(); ++ifunc) {
     fFuncs.at(ifunc)->setValueDirty();
   }        
