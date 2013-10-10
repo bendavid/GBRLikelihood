@@ -1827,7 +1827,7 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
     //this loop won't auto-vectorize because it's another gather operation (maybe in avx2 and gcc>4.7)
     for (unsigned int ibin=0; ibin<nbins; ++ibin) { 
       int quant = _binquants[ivar][ibin];
-      _varvals[ivar][ibin] = fQuantileMaps[ivar][quant];
+      _varvals[ivar][ibin] = fQuantileMaps[varidxs[ivar]][quant];
     }
     //printf("done quant manipulation\n");
     
@@ -2031,7 +2031,7 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
   
   
   for (std::vector<HybridGBREvent*>::const_iterator it = evts.begin(); it!=evts.end(); ++it) {
-    if ((*it)->Var(bestvar)>_cutvals[bestvar]) {
+    if ((*it)->Var(varidxs[bestvar])>_cutvals[bestvar]) {
       ++nright;
       sumwright += (*it)->Weight();
       rightevts.push_back(*it);
