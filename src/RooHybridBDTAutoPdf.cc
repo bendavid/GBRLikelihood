@@ -1605,6 +1605,8 @@ void RooHybridBDTAutoPdf::TrainForest(int ntrees, bool reuseforest) {
   TVectorD dparnull(fFullParms.getSize());
   fNLLVal = EvalLoss(0.,dparnull);
 
+  printf("Initial fNLLVal = %5f\n",fNLLVal);
+  
   printf("fullparms:\n");
   fFullParms.Print("V");
   
