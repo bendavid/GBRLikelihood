@@ -384,6 +384,7 @@ public:
   void SetMaxDepth(int depth) { fMaxDepth = depth; } 
   void SetMaxNodes(int max) { fMaxNodes = max; }
   void SetPrescaleInit(int n) { fPrescaleInit = n; }
+  void SetDoInitialFit(bool b) { fDoInitialFit = b; }
  
   void TrainForest(int ntrees, bool reuseforest = false);  
   
@@ -541,6 +542,7 @@ protected:
   double                    fMinCutSignificance;
   double                    fMinCutSignificanceMulti;
   double                    fMaxNSpurious;
+  bool                      fDoInitialFit;
   
   double                    fSumWTimesNVars;
   

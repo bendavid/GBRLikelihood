@@ -872,6 +872,7 @@ RooHybridBDTAutoPdf::RooHybridBDTAutoPdf(const char *name, const char *title, co
   fMinCutSignificance(-99.),
   fMinCutSignificanceMulti(-99.),
   fMaxNSpurious(-99.),
+  fDoInitialFit(true),
   fSumWTimesNVars(0.),
   fMaxDepth(-1),
   fMaxNodes(-1),
@@ -1553,11 +1554,13 @@ void RooHybridBDTAutoPdf::TrainForest(int ntrees, bool reuseforest) {
       
       nllfunc.Print();
       
-      RooMinimizer *minim = new RooMinimizer(nllfunc);
-      minim->setErrorLevel(0.5);
-      minim->setStrategy(0);
-      minim->minimize("Minuit2","minimize");  
-      delete minim;  
+      if (fDoInitialFit) {
+        RooMinimizer *minim = new RooMinimizer(nllfunc);
+        minim->setErrorLevel(0.5);
+        minim->setStrategy(0);
+        minim->minimize("Minuit2","minimize");  
+        delete minim;  
+      }
       
       //if (fConstraintCoeff->getVal()>0.) fR->setError(1e3*fR->getError());
     }
