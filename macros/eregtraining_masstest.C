@@ -75,7 +75,7 @@ void initweights(TChain *chain, float *xsecs, float lumi) {
   
 }
 
-void eregtraining_masstest(bool dobarrel, bool doele) {
+void eregtraining_masstest() {
    
 //   gSystem->Setenv("OMP_WAIT_POLICY","PASSIVE");
   
@@ -83,14 +83,14 @@ void eregtraining_masstest(bool dobarrel, bool doele) {
   //TString dirname = TString::Format("/afs/cern.ch/work/b/bendavid/bare/eregtesteleJul30_sig5_01_alphafloat5_%i/",int(minevents)); 
   
   //TString dirname = "/afs/cern.ch/work/b/bendavid/bare/eregAug23test/";
-  TString dirname = "/scratch/bendavid/root/bare/regflexmasstesting_mod100/"; 
+  TString dirname = "/data/bendavid/regflexmasstesting_mod100_small_even/"; 
   gSystem->mkdir(dirname,true);
   gSystem->cd(dirname);  
   
   std::vector<std::string> *varsf = new std::vector<std::string>;
-  varsf->push_back("ph.e");
+  varsf->push_back("0.*ph.e");
   varsf->push_back("ph.eerr/ph.e");
-  varsf->push_back("ph.scrawe");
+  varsf->push_back("0.*ph.scrawe");
   varsf->push_back("ph.sceta");
   varsf->push_back("ph.scphi");
   varsf->push_back("ph.r9");  
@@ -124,24 +124,25 @@ void eregtraining_masstest(bool dobarrel, bool doele) {
   std::vector<std::string> *varseb = new std::vector<std::string>(*varsf);
   std::vector<std::string> *varsee = new std::vector<std::string>(*varsf);
   
-  varseb->push_back("ph.e/ph.scrawe");  
-  varseb->push_back("ph.e5x5seed/ph.eseed");
+  varsf->push_back("ph.e/ph.scrawe");  
+  varsf->push_back("ph.isbarrel*ph.e5x5seed/ph.eseed");
   
-  varseb->push_back("ph.ietaseed");
-  varseb->push_back("ph.iphiseed");
-  varseb->push_back("(ph.ietaseed-1*abs(ph.ietaseed)/ph.ietaseed)%5");
-  varseb->push_back("(ph.iphiseed-1)%2");       
-  varseb->push_back("(abs(ph.ietaseed)<=25)*((ph.ietaseed-1*abs(ph.ietaseed)/ph.ietaseed)%25) + (abs(ph.ietaseed)>25)*((ph.ietaseed-26*abs(ph.ietaseed)/ph.ietaseed)%20)");
-  varseb->push_back("(ph.iphiseed-1)%20"); 
-  varseb->push_back("ph.etacryseed");
-  varseb->push_back("ph.phicryseed");
+  varsf->push_back("ph.isbarrel*ph.ietaseed");
+  varsf->push_back("ph.isbarrel*ph.iphiseed");
+  varsf->push_back("ph.isbarrel*(ph.ietaseed-1*abs(ph.ietaseed)/ph.ietaseed)%5");
+  varsf->push_back("ph.isbarrel*(ph.iphiseed-1)%2");       
+  varsf->push_back("ph.isbarrel*((abs(ph.ietaseed)<=25)*((ph.ietaseed-1*abs(ph.ietaseed)/ph.ietaseed)%25) + (abs(ph.ietaseed)>25)*((ph.ietaseed-26*abs(ph.ietaseed)/ph.ietaseed)%20))");
+  varsf->push_back("ph.isbarrel*(ph.iphiseed-1)%20"); 
+  varsf->push_back("ph.isbarrel*ph.etacryseed");
+  varsf->push_back("ph.isbarrel*ph.phicryseed");
 
-  varsee->push_back("ph.e/(ph.scrawe + ph.scpse)");  
-  varsee->push_back("ph.scpse/ph.scrawe");
+  varsf->push_back("!ph.isbarrel*ph.e/(ph.scrawe + ph.scpse)");  
+  varsf->push_back("!ph.isbarrel*ph.scpse/ph.scrawe");
     
-  std::vector<std::string> *varslist;
-  if (dobarrel) varslist = varseb;
-  else varslist = varsee;
+  std::vector<std::string> *varslist = varsf;
+//   if (dobarrel) varslist = varseb;
+//   else varslist = varsee;
+  //varslist = varseb;
   
   RooArgList vars_ph1;
   RooArgList vars_ph2;  
@@ -193,12 +194,23 @@ void eregtraining_masstest(bool dobarrel, bool doele) {
   
   RooRealVar *mass = new RooRealVar("mass","mass",90.,70.,110.);
   
-  RooRealVar *logmass = new RooRealVar("logmass",TString::Format("log(mass)-%5f",logpdgzmass),0.,log(70.)-logpdgzmass,log(110.)-logpdgzmass);
-  RooRealVar *relpt_ph1 = new RooRealVar("relpt_ph1","ph1.pt/mass",1.);
-  RooRealVar *relpt_ph2 = new RooRealVar("relpt_ph2","ph2.pt/mass",1.);
+  RooRealVar *logmass = new RooRealVar("logmass",TString::Format("log(mass)-log(91.1876)",logpdgzmass),0.,log(70.)-logpdgzmass,log(110.)-logpdgzmass);
+//   RooRealVar *relpt_ph1 = new RooRealVar("relpt_ph1","ph1.pt/mass",1.);
+//   RooRealVar *relpt_ph2 = new RooRealVar("relpt_ph2","ph2.pt/mass",1.);
+  RooRealVar *relpt_ph1 = new RooRealVar("relpt_ph1","ph1.pt",1.);
+  RooRealVar *relpt_ph2 = new RooRealVar("relpt_ph2","ph2.pt",1.);  
   RooRealVar *eta_ph1 = new RooRealVar("eta_ph1","ph1.eta",1.);
   RooRealVar *eta_ph2 = new RooRealVar("eta_ph2","ph2.eta",1.);
   RooRealVar *cosdphi = new RooRealVar("cosdphi","TMath::Cos(ph1.phi-ph2.phi)",1.);
+  
+  RooRealVar *evt = new RooRealVar("evt","evt",0.);
+  RooRealVar *run = new RooRealVar("run","run",0.);
+  RooRealVar *lumi = new RooRealVar("lumi","lumi",0.);
+  
+  RooRealVar *costheta = new RooRealVar("costheta","costheta",0.);
+  RooRealVar *gene_ph1 = new RooRealVar("gene_ph1","ph1.gene",0.);
+  RooRealVar *gene_ph2 = new RooRealVar("gene_ph2","ph2.gene",0.);
+  RooRealVar *genmass = new RooRealVar("genmass","genmass",0.);
   
 /*  RooRealVar *tgtvar = new RooRealVar("tgtvar","log(ph.gene/ph.scrawe)",1.);
   if (!dobarrel) tgtvar->SetTitle("log(ph.gene/(ph.scrawe + ph.scpse))");  */  
@@ -206,11 +218,11 @@ void eregtraining_masstest(bool dobarrel, bool doele) {
   //tgtvar->setRange(0.8,2.);
   
   RooArgList condvarsmass;
-  condvarsmass.add(*relpt_ph1);
-  condvarsmass.add(*relpt_ph2);
-  condvarsmass.add(*eta_ph1);
-  condvarsmass.add(*eta_ph2);
-  condvarsmass.add(*cosdphi);
+//   condvarsmass.add(*relpt_ph1);
+//   condvarsmass.add(*relpt_ph2);
+//   condvarsmass.add(*eta_ph1);
+//   condvarsmass.add(*eta_ph2);
+  //condvarsmass.add(*cosdphi);
 
   RooArgList condvars;
   condvars.add(vars_all);
@@ -225,12 +237,26 @@ void eregtraining_masstest(bool dobarrel, bool doele) {
   vars.add(*logmass);
   vars.add(*mass);
   vars.add(condvarsmass);
+  vars.add(*evt);
+  vars.add(*run);
+  vars.add(*lumi);
   
-  condvarsmass.add(*vars_ph1.at(1));
-  condvarsmass.add(*vars_ph2.at(1));
-
-
   
+  vars_ph1.add(*run);
+  vars_ph1.add(*lumi);
+
+  vars_ph2.add(*run);
+  vars_ph2.add(*lumi);  
+  
+  
+//   condvarsmass.add(*vars_ph1.at(1));
+//   condvarsmass.add(*vars_ph2.at(1));
+//   condvarsmass.add(*vars_ph1.at(30));
+//   condvarsmass.add(*vars_ph2.at(30));
+//   condvarsmass.add(*vars_ph1.at(40));
+//   condvarsmass.add(*vars_ph2.at(40));
+  
+  condvarsmass.add(vars_all);
  
   
   //varstest.add(*tgtvar);
@@ -251,13 +277,13 @@ void eregtraining_masstest(bool dobarrel, bool doele) {
   TString treeloc = "RunLumiSelectionMod/MCProcessSelectionMod/HLTModP/GoodPVFilterMod/PhotonMvaMod/JetPub/JetCorrectionMod/SeparatePileUpMod/ElectronIDMod/MuonIDMod/PhotonPairSelectorPreselInvertEleVetoNoSmear/PhotonTreeWriterPreselInvertEleVetoNoSmear/hPhotonTree";
      
   TChain *tree = new TChain(treeloc);
-  tree->Add("/home/mingyang/cms/hist/hgg-2013Final8TeV/merged/hgg-2013Final8TeV_s12-zllm50-v7n_noskim.root");
+  tree->Add("/data/bendavid/diphoTrees8TeVOct6/hgg-2013Final8TeV_s12-zllm50-v7n_noskim.root");
 
   TChain *treedata = new TChain(treeloc);
-  treedata->Add("/home/mingyang/cms/hist/hgg-2013Final8TeV/merged/hgg-2013Final8TeV_r12a-pho-j22-v1_noskim.root");  
-  treedata->Add("/home/mingyang/cms/hist/hgg-2013Final8TeV/merged/hgg-2013Final8TeV_r12b-dph-j22-v1_noskim.root");  
-  treedata->Add("/home/mingyang/cms/hist/hgg-2013Final8TeV/merged/hgg-2013Final8TeV_r12c-dph-j22-v1_noskim.root");  
-  treedata->Add("/home/mingyang/cms/hist/hgg-2013Final8TeV/merged/hgg-2013Final8TeV_r12d-dph-j22-v1_noskim.root");   
+  treedata->Add("/data/bendavid/diphoTrees8TeVOct6/hgg-2013Final8TeV_r12a-pho-j22-v1_noskim.root");  
+  treedata->Add("/data/bendavid/diphoTrees8TeVOct6/hgg-2013Final8TeV_r12b-dph-j22-v1_noskim.root");  
+  treedata->Add("/data/bendavid/diphoTrees8TeVOct6/hgg-2013Final8TeV_r12c-dph-j22-v1_noskim.root");  
+  treedata->Add("/data/bendavid/diphoTrees8TeVOct6/hgg-2013Final8TeV_r12d-dph-j22-v1_noskim.root");   
 
     
   
@@ -277,8 +303,10 @@ void eregtraining_masstest(bool dobarrel, bool doele) {
   
 
   
-  TCut selcut = "mass>70. && mass<110. && (ph1.pt/mass) > (20./70.) && (ph2.pt/mass) > (20./70.) && ph1.isbarrel && ph2.isbarrel && evt%100==0";
-
+  TCut selcut = "mass>70. && mass<110. && ph1.pt>28. && ph2.pt>20.";
+  TCut tcut = "evt%2==0";
+  TCut mccut =  "evt%10==0";
+  TCut mcrawcut =  "evt%10==1";
   
   TCut selweight = "xsecweight(procidx)";
   TCut prescale10 = "(evt%10==0)";
@@ -291,10 +319,20 @@ void eregtraining_masstest(bool dobarrel, bool doele) {
   TCut oddevents = "(evt%2==1)";
   
 
-  weightvar.SetTitle(selcut);
+  weightvar.SetTitle(selcut*tcut);
   RooDataSet *hdata = RooTreeConvert::CreateDataSet("hdata",tree,vars,weightvar);   
-  RooDataSet *hdataD = RooTreeConvert::CreateDataSet("hdataD",treedata,vars,weightvar);
+  RooDataSet *hdataD = RooTreeConvert::CreateDataSet("hdataD",treedata,vars,weightvar);  
   
+//   weightvar.SetTitle(selcut*mccut);
+//   logmass->SetTitle("log(mass)-log(91.1876)");
+//   RooDataSet *hdata = RooTreeConvert::CreateDataSet("hdata",tree,vars,weightvar);   
+//   
+//   logmass->SetTitle("0.5*(log(2.0) + log(ph1.scrawe+ph1.scpse) + log(ph2.scrawe+ph2.scpse) + log(1.0-costheta)) - log(91.1876)");
+//   weightvar.SetTitle(selcut*mcrawcut);
+//   RooDataSet *hdataD = RooTreeConvert::CreateDataSet("hdataD",tree,vars,weightvar);
+  
+  //logmass->SetTitle("0.5*(log(2.0) + log(ph1.scrawe+ph1.scpse) + log(ph2.scrawe+ph2.scpse) + log(1.0-costheta)) - log(91.1876)");
+
   
   RooRealVar *scalevar_ph1 = new RooRealVar("scalevar_ph1","",1.);
   RooRealVar *scalevar_ph2 = new RooRealVar("scalevar_ph2","",1.);
@@ -314,17 +352,19 @@ void eregtraining_masstest(bool dobarrel, bool doele) {
   RooGBRTargetFlex *smear_ph1 = new RooGBRTargetFlex("smear_ph1","",*smearfunc,*smearvar_ph1,vars_ph1);
   RooGBRTargetFlex *smear_ph2 = new RooGBRTargetFlex("smear_ph2","",*smearfunc,*smearvar_ph2,vars_ph2);  
   
+  const double negsmearlim = 0.0;
+  
   RooRealConstraint *scalelim_ph1 = new RooRealConstraint("scalelim_ph1","",*scale_ph1,0.7,1.3);
   RooRealConstraint *scalelim_ph2 = new RooRealConstraint("scalelim_ph2","",*scale_ph2,0.7,1.3);  
-  RooRealConstraint *smearlim_ph1 = new RooRealConstraint("smearlim_ph1","",*smear_ph1,0.,pow(0.2,2));
-  RooRealConstraint *smearlim_ph2 = new RooRealConstraint("smearlim_ph2","",*smear_ph2,0.,pow(0.2,2));    
+  RooRealConstraint *smearlim_ph1 = new RooRealConstraint("smearlim_ph1","",*smear_ph1,-pow(negsmearlim,2),pow(0.2,2));
+  RooRealConstraint *smearlim_ph2 = new RooRealConstraint("smearlim_ph2","",*smear_ph2,-pow(negsmearlim,2),pow(0.2,2));    
   
   //RooFormulaVar *mscale = new RooFormulaVar("mscale","","sqrt(@0*@1)",RooArgList(*scalelim_ph1,*scalelim_ph2));
   //RooLinearVar *scaledmass = new RooLinearVar("scaledmass","",*mass,*mscale,RooConst(0.));
 
   //RooLinearVar *scaledmasssingle = new RooLinearVar("scaledmasssingle","",*mass,*scalelim_ph1,RooConst(0.));  
   
-  int ngaus = 4;
+  int ngaus = 6; 
   
   RooArgList tgtsmass;
   
@@ -358,14 +398,16 @@ void eregtraining_masstest(bool dobarrel, bool doele) {
     RooGBRTargetFlex *gfrac = new RooGBRTargetFlex(TString::Format("gfrac_%i",igaus),"",*gfracfunc,*gfracvar,condvarsmass);
 
     RooRealConstraint *gmeanlim = new RooRealConstraint(TString::Format("gmeanlim_%i",igaus),"",*gmean,log(75.)-logpdgzmass,log(105.)-logpdgzmass);
-    RooRealConstraint *gsigmalim = new RooRealConstraint(TString::Format("gsigmalim_%i",igaus),"",*gsigma,1e-5,0.3);
+    RooRealConstraint *gsigmalim = new RooRealConstraint(TString::Format("gsigmalim_%i",igaus),"",*gsigma,sqrt(0.5*negsmearlim*negsmearlim + 1e-5),0.3);
     RooRealConstraint *gsigmaRlim = new RooRealConstraint(TString::Format("gsigmaRlim_%i",igaus),"",*gsigmaR,1e-5,0.3);
     //RooRealConstraint *gfraclim = new RooRealConstraint(TString::Format("gfraclim_%i",igaus),"",*gfrac,0.,1.);
     
     RooAbsReal *gfraclim = new RooProduct(TString::Format("gfraclim_%i",igaus),"",RooArgList(*gfrac,*gfrac));
      
     RooFormulaVar *gmeanscale = new RooFormulaVar(TString::Format("gmeanscale_%i",igaus),"","@0 - 0.5*log(@1*@2)",RooArgList(*gmeanlim,*scalelim_ph1,*scalelim_ph2));
-    RooFormulaVar *gsigmasmear = new RooFormulaVar(TString::Format("gsigmasmear_%i",igaus),"","sqrt(@0*@0 + 0.25*(@1+@2))",RooArgList(*gsigmalim,*smearlim_ph1,*smearlim_ph2));
+    RooFormulaVar *gsigmasmear = new RooFormulaVar(TString::Format("gsigmasmear_%i",igaus),"","sqrt(@0*@0 + 0.25*(@1+@2))",RooArgList(*gsigmalim,*smearlim_ph1,*smearlim_ph2)); 
+    
+    //RooFormulaVar *gsigmasmear = new RooFormulaVar(TString::Format("gsigmasmear_%i",igaus),"","sqrt(TMath::Max(1e-3,@0*@0 + 0.25*(@1+@2)))",RooArgList(*gsigmalim,*smearlim_ph1,*smearlim_ph2));
 
     RooFormulaVar *gmeanscalesingle = new RooFormulaVar(TString::Format("gmeanscalesingle_%i",igaus),"","@0 - log(@1)",RooArgList(*gmeanlim,*scalelim_ph1));    
     RooFormulaVar *gsigmasmearsingle = new RooFormulaVar(TString::Format("gsigmasmearsingle_%i",igaus),"","sqrt(@0*@0 + 0.5*@1)",RooArgList(*gsigmalim,*smearlim_ph1));    
@@ -397,7 +439,8 @@ void eregtraining_masstest(bool dobarrel, bool doele) {
     
   }  
   RooCondAddPdf masspdf("masspdf","",gauspdfs,gauscoeffs);  
-  RooCondAddPdf masspdfdata("masspdfdata","",gauspdfsdata,gauscoeffs);  
+  RooCondAddPdf masspdfdata("masspdfdata","",gauspdfsdata,gauscoeffs);
+  //RooCondAddPdf masspdfdata("masspdfdata","",gauspdfsdatasingle,gauscoeffs);  
   RooCondAddPdf masspdfdatasingle("masspdfdatasingle","",gauspdfsdatasingle,gauscoeffs);  
   
   
@@ -428,8 +471,8 @@ void eregtraining_masstest(bool dobarrel, bool doele) {
   double minweight = 200;
 
   std::vector<double> minweights;
-  minweights.push_back(200.);
-  minweights.push_back(0.);
+  minweights.push_back(100.);
+  minweights.push_back(100.);
   
   //ntot.setConstant();
 
@@ -452,38 +495,9 @@ void eregtraining_masstest(bool dobarrel, bool doele) {
     vpdfinit.push_back(&masspdf);
     
     RooHybridBDTAutoPdf bdtpdfinit("bdtpdfinit","",tgtsmass,etermconst,r,vdatainit,vpdfinit);
-    bdtpdfinit.SetPrescaleInit(1);    
+    bdtpdfinit.SetPrescaleInit(50);    
     bdtpdfinit.TrainForest(0);
     
-  }
-  
-
-  
-  if(0) {
-    RooArgSet *gausvars = masspdf.getParameters(hdata);
-    printf("gausvars:\n");
-    gausvars->Print("V");
-    //return;
-    
-    gausvars->setAttribAll("Constant",true);
-
-    std::vector<RooAbsData*> vdatainitd;
-    vdatainitd.push_back(hdataD);        
-    
-    std::vector<RooAbsReal*> vpdfinitd;
-    vpdfinitd.push_back(&masspdfdatasingle);     
-    
-    RooHybridBDTAutoPdf bdtpdfinitd("bdtpdfinitd","",tgtssingle,etermconst,r,vdatainitd,vpdfinitd);
-    bdtpdfinitd.SetPrescaleInit(1);    
-    bdtpdfinitd.TrainForest(0);
-    
-    scalevar_ph2->setVal(scalevar_ph1->getVal());
-    scalevar_ph2->setError(scalevar_ph1->getError());
-
-    smearvar_ph2->setVal(smearvar_ph1->getVal());
-    smearvar_ph2->setError(smearvar_ph1->getError());     
-    
-    gausvars->setAttribAll("Constant",false);
   }
   
   if(1) {    
@@ -497,7 +511,7 @@ void eregtraining_masstest(bool dobarrel, bool doele) {
     vpdfsingle.push_back(&masspdfdatasingle);     
     
     RooHybridBDTAutoPdf bdtpdfsingle("bdtpdfsingle","",tgtssingle,etermconst,r,vdatasingle,vpdfsingle);
-    bdtpdfsingle.SetPrescaleInit(1);    
+    bdtpdfsingle.SetPrescaleInit(50);    
     bdtpdfsingle.TrainForest(0);
     
     scalevar_ph2->setVal(scalevar_ph1->getVal());
@@ -531,12 +545,12 @@ void eregtraining_masstest(bool dobarrel, bool doele) {
     bdtpdfdiff.SetMinWeights(minweights);
     //bdtpdfdiff.SetMinWeightTotal(100.);
     //bdtpdfdiff.SetMaxNodes(270);
-    bdtpdfdiff.SetMaxNodes(750);
+    bdtpdfdiff.SetMaxNodes(200);
     //bdtpdfdiff.SetMaxNodes(600);
     //bdtpdfdiff.SetMaxNodes(500);
     //bdtpdfdiff.SetMaxDepth(8);
     //bdtpdfdiff.TrainForest(1e6);
-    bdtpdfdiff.TrainForest(500);  
+    bdtpdfdiff.TrainForest(1000);  
     
   }   
      
@@ -548,18 +562,20 @@ void eregtraining_masstest(bool dobarrel, bool doele) {
   wereg->writeToFile("weregmass.root");    
 
      
-  new TCanvas;
+  
+  TCanvas *cmc = new TCanvas;
   RooPlot *plot = logmass->frame(100);
   hdata->plotOn(plot);
   masspdf.plotOn(plot,ProjWData(*hdata));
   plot->Draw();
+  cmc->SaveAs("mplotmc.eps");
 
-  new TCanvas;
+  TCanvas *cdata = new TCanvas;
   RooPlot *plotD = logmass->frame(100);
   hdataD->plotOn(plotD);
   masspdfdata.plotOn(plotD,ProjWData(*hdataD));
   plotD->Draw();
-  
+  cdata->SaveAs("mplotdata.eps");
   
 //   RooFormulaVar *scaledmass = new RooFormulaVar("scaledmass","","sqrt(@0*@1)*@2",RooArgList(*scalelim_ph1,*scalelim_ph2,*mass));
 //   RooRealVar *scaledmassvar = (RooRealVar*)hdataD->addColumn(*scaledmass);
@@ -569,10 +585,10 @@ void eregtraining_masstest(bool dobarrel, bool doele) {
   
   
   
-  RooAbsReal *condnll = masspdf.createNLL(*hdata,ConditionalObservables(condvarsmass),NumCPU(16));
-  RooAbsReal *condnllD = masspdfdata.createNLL(*hdataD,ConditionalObservables(condvars),NumCPU(16));
-  
-  printf("condnll = %5f, condnllD = %5f, totalnll = %5f\n",condnll->getVal(),condnllD->getVal(), condnll->getVal()+condnllD->getVal());
+//   RooAbsReal *condnll = masspdf.createNLL(*hdata,ConditionalObservables(condvarsmass),NumCPU(16));
+//   RooAbsReal *condnllD = masspdfdata.createNLL(*hdataD,ConditionalObservables(condvars),NumCPU(16));
+//   
+//   printf("condnll = %5f, condnllD = %5f, totalnll = %5f\n",condnll->getVal(),condnllD->getVal(), condnll->getVal()+condnllD->getVal());
   
   
   
