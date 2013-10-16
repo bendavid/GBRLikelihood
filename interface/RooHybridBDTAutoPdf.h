@@ -367,6 +367,7 @@ public:
   //RooHybridBDTAutoPdf() {} ;
   RooHybridBDTAutoPdf(const char *name, const char *title, const RooArgList &tgtvars, RooAbsReal &n0, RooRealVar &r, const std::vector<RooAbsData*> &data, const std::vector<RooAbsReal*> &pdfs);
 
+  ~RooHybridBDTAutoPdf();
 
   
   void AddInputVar(std::string var)    { fInputVars.push_back(var); }

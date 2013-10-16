@@ -35,6 +35,7 @@ HybridGBREvent::~HybridGBREvent()
   if (fVars) delete[] fVars;
   if (fTargets) delete[] fTargets;
   if (fTransTargets) delete[] fTransTargets;
+  if (fTransTargets2) delete[] fTransTargets2;
   if (fQuantiles) delete [] fQuantiles;
   if (fDerivatives) delete [] fDerivatives;
   if (fDerivatives2) delete [] fDerivatives2;

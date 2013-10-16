@@ -1343,6 +1343,95 @@ RooHybridBDTAutoPdf::RooHybridBDTAutoPdf(const char *name, const char *title, co
 }
 
 //_____________________________________________________________________________
+RooHybridBDTAutoPdf::~RooHybridBDTAutoPdf() {
+  
+  int nvars = fCondVars.getSize() + fParmVars.getSize();
+  int ncls = fData.size();  
+  
+  for (int ivar=0; ivar<nvars; ++ivar) {
+    
+    for (int icls=0; icls<ncls; ++icls) {
+      free(_wscls[ivar][icls]);
+      free(_sumwscls[ivar][icls]);
+    }    
+    
+    free(_ws[ivar]);
+    free(_ws2[ivar]);
+    free(_ns[ivar]);
+    free(_tgts[ivar]);
+    free(_tgt2s[ivar]);
+    free(_sumws[ivar]);
+    free(_sumws2[ivar]);
+    free(_sumns[ivar]);
+    free(_sumtgts[ivar]);
+    free(_sumtgt2s[ivar]);
+    free(_varvals[ivar]);
+    free(_bsepgains[ivar]);
+    free(_bsepgainsigs[ivar]);
+    
+    free(_wscls[ivar]);
+    free(_sumwscls[ivar]);
+    
+    free(_binquants[ivar]);
+    free(_quants[ivar]);
+    
+    free(fQuantileMaps[ivar]);
+  }    
+  
+  free(_sepgains);
+  free(_sepgainsigs);
+  free(_cutvals);
+  free(_nlefts);
+  free(_nrights);
+  free(_sumwlefts);
+  free(_sumwrights);
+  free(_sumtgtlefts);
+  free(_sumtgtrights);
+  free(_leftvars);
+  free(_rightvars);
+  free(_fullvars);
+  free(_bestbins);
+  
+  free(_ws);
+  free(_ws2);
+  free(_wscls);
+  free(_ns);
+  free(_nsd);
+  free(_tgts);
+  free(_tgt2s);
+  free(_sumws);
+  free(_sumws2);
+  free(_sumwscls);
+  free(_sumns);
+  free(_sumtgts);
+  free(_sumtgt2s);
+  free(_varvals);
+  free(_bsepgains);
+  free(_bsepgainsigs);
+  
+  free(_binquants);
+  free(_quants);
+  
+  free(_clss);
+  free(_tgtvals);
+  free(_tgt2vals);
+  free(_weightvals);
+  
+  free(fQuantileMaps);
+  
+  for (unsigned int iev=0; iev<fEvts.size(); ++iev) {
+    delete fEvts[iev];
+    fEvts[iev] = 0;
+  }
+  
+  
+
+  
+}
+  
+
+
+//_____________________________________________________________________________
 void RooHybridBDTAutoPdf::SetMinCutSignificance(double x) {
   
   //fMinCutSignificance = TMath::ChisquareQuantile(TMath::Erf(x/sqrt(2)),1)/2.0;
