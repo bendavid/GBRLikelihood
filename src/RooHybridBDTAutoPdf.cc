@@ -1330,10 +1330,24 @@ RooHybridBDTAutoPdf::RooHybridBDTAutoPdf(const char *name, const char *title, co
   printf("second loop, fill events in memory\n");
   //loop over trees to fill arrays and event vector
    
+  
   //second loop here
   for (unsigned int idata=0; idata<data.size(); ++idata) {
+    std::vector<RooRealVar*> dcondvars(fCondVars.getSize());
+    std::vector<RooRealVar*> dparmvars(fParmVars.getSize());
+
+    const RooArgSet *dset = data[idata]->get();
+    
+    for (int ivar=0; ivar<fCondVars.getSize(); ++ivar) {
+      dcondvars[ivar] = static_cast<RooRealVar*>(dset->find(fCondVars.at(ivar)->GetName()));
+    }
+      
+    for (int ivar=0; ivar<fParmVars.getSize(); ++ivar) {
+      dparmvars[ivar] = static_cast<RooRealVar*>(dset->find(fParmVars.at(ivar)->GetName()));
+    }
+      
     for (int iev=0; iev<data[idata]->numEntries(); ++iev) {
-      const RooArgSet *ev = data[idata]->get(iev);
+      data[idata]->get(iev);
       fEvts.push_back(new HybridGBREvent(nvars,fNTargets,fFullParms.getSize()));
       HybridGBREvent *evt = fEvts.back();
       evt->SetWeight(data[idata]->weight());
@@ -1341,11 +1355,11 @@ RooHybridBDTAutoPdf::RooHybridBDTAutoPdf(const char *name, const char *title, co
 
       sumw += evt->Weight();
       
-      for (int ivar=0; ivar<fCondVars.getSize(); ++ivar) {
-	evt->SetVar(ivar,static_cast<RooAbsReal*>(ev->find(fCondVars.at(ivar)->GetName()))->getVal());
+      for (unsigned int ivar=0; ivar<dcondvars.size(); ++ivar) {
+	evt->SetVar(ivar,dcondvars[ivar]->getVal());
       }
-      for (int ivar=0; ivar<fParmVars.getSize(); ++ivar) {
-	evt->SetVar(fCondVars.getSize() + ivar, static_cast<RooAbsReal*>(ev->find(fParmVars.at(ivar)->GetName()))->getVal());
+      for (unsigned int ivar=0; ivar<dparmvars.size(); ++ivar) {
+	evt->SetVar(dcondvars.size() + ivar, dparmvars[ivar]->getVal());
       }    
     }
   }
@@ -3365,7 +3379,7 @@ void RooHybridBDTAutoPdf::FitResponses(int selvar = -1) {
   
   for (std::vector<HybridGBREvent*>::const_iterator it = fEvts.begin(); it!=fEvts.end(); ++it) {
     for (int itgt=0; itgt<fNTargets; ++itgt) {
-      int ifunc = fFuncs.index(static_cast<RooGBRTargetFlex*>(fTgtVars.at(itgt))->Func());      
+      int ifunc = funcidxs[itgt];   
       int termidx = (*it)->CurrentNode(itgt);
       (*it)->SetTarget(itgt,(*it)->Target(itgt)+step*dpar(localidxs[ifunc] + termidx));
     }
