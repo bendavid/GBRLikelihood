@@ -1284,22 +1284,22 @@ RooHybridBDTAutoPdf::RooHybridBDTAutoPdf(const char *name, const char *title, co
     clonecomps->add(*clonevars);
     //clonecomps->Print("V");
     for (int ivar=0; ivar<fCondVars.getSize(); ++ivar) {
-      fCondVarsClones[ithread].add(*clonecomps->find(fCondVars.at(ivar)->GetName()));
+      fCondVarsClones[ithread].push_back(static_cast<RooRealVar*>(clonecomps->find(fCondVars.at(ivar)->GetName())));
     }
     for (int ivar=0; ivar<fParmVars.getSize(); ++ivar) {
-      fParmVarsClones[ithread].add(*clonecomps->find(fParmVars.at(ivar)->GetName()));
+      fParmVarsClones[ithread].push_back(static_cast<RooRealVar*>(clonecomps->find(fParmVars.at(ivar)->GetName())));
     }
     for (int ivar=0; ivar<fStaticTgts.getSize(); ++ivar) {
-      fStaticTgtsClones[ithread].add(*clonecomps->find(fStaticTgts.at(ivar)->GetName()));
+      fStaticTgtsClones[ithread].push_back(static_cast<RooRealVar*>(clonecomps->find(fStaticTgts.at(ivar)->GetName())));
     }
     for (int ivar=0; ivar<fStaticPdfs.getSize(); ++ivar) {
-      fStaticPdfsClones[ithread].add(*clonecomps->find(fStaticPdfs.at(ivar)->GetName()));
+      fStaticPdfsClones[ithread].push_back(static_cast<RooAbsReal*>(clonecomps->find(fStaticPdfs.at(ivar)->GetName())));
     }    
     for (int ivar=0; ivar<fFullParms.getSize(); ++ivar) {
-      fFullParmsClones[ithread].add(*clonecomps->find(fFullParms.at(ivar)->GetName()));
+      fFullParmsClones[ithread].push_back(static_cast<RooRealVar*>(clonecomps->find(fFullParms.at(ivar)->GetName())));
     }   
     for (int ivar=0; ivar<fExtVars.getSize(); ++ivar) {
-      fExtVarsClones[ithread].add(*clonecomps->find(fExtVars.at(ivar)->GetName()));
+      fExtVarsClones[ithread].push_back(static_cast<RooRealVar*>(clonecomps->find(fExtVars.at(ivar)->GetName())));
     }
     //remove extraneous value servers for target objects
     for (int ivar=0; ivar<fTgtVars.getSize(); ++ivar) {
@@ -1310,7 +1310,11 @@ RooHybridBDTAutoPdf::RooHybridBDTAutoPdf(const char *name, const char *title, co
     delete clonecomps;
     delete clonevars;
     
-    fParmSetClones.push_back(RooArgSet(fParmVarsClones[ithread]));
+    RooArgSet parmsetclone;
+    for (unsigned int ivar=0; ivar<fParmVarsClones[ithread].size(); ++ivar) {
+      parmsetclone.add(*fParmVarsClones[ithread][ivar]);
+    }
+    fParmSetClones.push_back(parmsetclone);
   }
   
 //   fCondVarsClones[0].Print("V");
@@ -1474,15 +1478,15 @@ void RooHybridBDTAutoPdf::UpdateTargets(int nvars, int selvar = -1) {
     
     int ithread =  omp_get_thread_num();
     
-    for (int ivar=0; ivar<fCondVars.getSize(); ++ivar) {
-      static_cast<RooRealVar*>(fCondVarsClones[ithread].at(ivar))->setVal(fEvts.at(iev)->Var(ivar));
+    for (unsigned int ivar=0; ivar<fCondVarsClones[ithread].size(); ++ivar) {
+      fCondVarsClones[ithread][ivar]->setVal(fEvts.at(iev)->Var(ivar));
     }
-    for (int ivar=0; ivar<fParmVars.getSize(); ++ivar) {
-      static_cast<RooRealVar*>(fParmVarsClones[ithread].at(ivar))->setVal(fEvts.at(iev)->Var(fCondVarsClones[ithread].getSize() + ivar));
+    for (unsigned int ivar=0; ivar<fParmVarsClones[ithread].size(); ++ivar) {
+      fParmVarsClones[ithread][ivar]->setVal(fEvts.at(iev)->Var(fCondVarsClones[ithread].size() + ivar));
     }
     
-    for (int itgt=0; itgt<fNTargets; ++itgt) {
-      static_cast<RooRealVar*>(fStaticTgtsClones[ithread].at(itgt))->setVal(fEvts.at(iev)->Target(itgt));
+    for (unsigned int itgt=0; itgt<fStaticTgtsClones[ithread].size(); ++itgt) {
+      fStaticTgtsClones[ithread][itgt]->setVal(fEvts.at(iev)->Target(itgt));
     }
     
     int evcls = fEvts.at(iev)->Class();
@@ -1509,12 +1513,12 @@ void RooHybridBDTAutoPdf::UpdateTargets(int nvars, int selvar = -1) {
       
       int itgt = ivar - fExtVars.getSize();
       
-      RooRealVar *var = static_cast<RooRealVar*>(fFullParmsClones[ithread].at(ivar));
+      RooRealVar *var = fFullParmsClones[ithread][ivar];
       double startval = var->getVal();
       //double step = 1e-3*var->getError();
       double step = 1e-3*var->getError();
       
-      RooAbsReal *func = static_cast<RooAbsReal*>(fStaticPdfsClones[ithread].at(evcls));
+      RooAbsReal *func = fStaticPdfsClones[ithread][evcls];
       
       var->setVal(startval + step);
       double upval = func->getValV(&fParmSetClones[ithread]);
@@ -2305,11 +2309,11 @@ double RooHybridBDTAutoPdf::EvalLossRooFit() {
     //int termidx = fEvts[ievt]->CurrentNode();
     //if (seltermidx>=0 && termidx!=seltermidx) continue;
         
-    for (int ivar=0; ivar<fCondVarsClones[ithread].getSize(); ++ivar) {
-      static_cast<RooRealVar*>(fCondVarsClones[ithread].at(ivar))->setVal(fEvts[ievt]->Var(ivar));
+    for (unsigned int ivar=0; ivar<fCondVarsClones[ithread].size(); ++ivar) {
+      fCondVarsClones[ithread][ivar]->setVal(fEvts[ievt]->Var(ivar));
     }
-    for (int ivar=0; ivar<fParmVarsClones[ithread].getSize(); ++ivar) {
-      static_cast<RooRealVar*>(fParmVarsClones[ithread].at(ivar))->setVal(fEvts[ievt]->Var(fCondVarsClones[ithread].getSize() + ivar));
+    for (unsigned int ivar=0; ivar<fParmVarsClones[ithread].size(); ++ivar) {
+      fParmVarsClones[ithread][ivar]->setVal(fEvts[ievt]->Var(fCondVarsClones[ithread].size() + ivar));
     }    
 
     
@@ -2319,7 +2323,7 @@ double RooHybridBDTAutoPdf::EvalLossRooFit() {
     //nll value for minos constraint
     //if (evcls==0) fNLLVal += -log(static_cast<RooAbsReal*>(fStaticPdfs.at(evcls))->getValV(&parmset));
     
-    double pdfval = static_cast<RooAbsReal*>(fStaticPdfsClones[ithread].at(evcls))->getValV(&fParmSetClones[ithread]);
+    double pdfval = fStaticPdfsClones[ithread][evcls]->getValV(&fParmSetClones[ithread]);
     
     //nllval += -weight*log(pdfval);
     //nllvals[ithread] += -weight*vdt::fast_logf(pdfval);
@@ -2425,6 +2429,13 @@ double RooHybridBDTAutoPdf::EvalLoss(double lambda, const TVectorD &dL, int itre
 //     pointidx = itree%fFullParms.getSize();
 //   }
 
+
+  //map of function indices
+  std::vector<int> funcidxs(fStaticTgts.getSize());
+  for (int itgt=0; itgt<fStaticTgts.getSize(); ++itgt) {
+    funcidxs[itgt] = fFuncs.index(static_cast<RooGBRTargetFlex*>(fTgtVars.at(itgt))->Func());
+  }
+
   std::vector<double> nllvals(fNThreads);
 
   #pragma omp parallel for
@@ -2439,17 +2450,17 @@ double RooHybridBDTAutoPdf::EvalLoss(double lambda, const TVectorD &dL, int itre
     
     //int idxlocal = nextvars + fNTargets*termidx;
     
-    for (int ivar=0; ivar<fCondVarsClones[ithread].getSize(); ++ivar) {
-      static_cast<RooRealVar*>(fCondVarsClones[ithread].at(ivar))->setVal(fEvts[ievt]->Var(ivar));
+    for (unsigned int ivar=0; ivar<fCondVarsClones[ithread].size(); ++ivar) {
+      fCondVarsClones[ithread][ivar]->setVal(fEvts[ievt]->Var(ivar));
     }
-    for (int ivar=0; ivar<fParmVarsClones[ithread].getSize(); ++ivar) {
-      static_cast<RooRealVar*>(fParmVarsClones[ithread].at(ivar))->setVal(fEvts[ievt]->Var(fCondVarsClones[ithread].getSize() + ivar));
+    for (unsigned int ivar=0; ivar<fParmVarsClones[ithread].size(); ++ivar) {
+      fParmVarsClones[ithread][ivar]->setVal(fEvts[ievt]->Var(fCondVarsClones[ithread].size() + ivar));
     }    
 
-    for (int itgt=0; itgt<fNTargets; ++itgt) {
-      int ifunc = fFuncs.index(static_cast<RooGBRTargetFlex*>(fTgtVars.at(itgt))->Func());
+    for (unsigned int itgt=0; itgt<fStaticTgtsClones[ithread].size(); ++itgt) {
+      int ifunc = funcidxs[itgt];
       int iel = localidxs[ifunc] + fEvts[ievt]->CurrentNode(itgt);
-      static_cast<RooRealVar*>(fStaticTgtsClones[ithread].at(itgt))->setVal(fEvts[ievt]->Target(itgt) + lambda*dL[iel]);
+      fStaticTgtsClones[ithread][itgt]->setVal(fEvts[ievt]->Target(itgt) + lambda*dL[iel]);
     }
     
     int evcls = fEvts[ievt]->Class(); 
@@ -2458,7 +2469,7 @@ double RooHybridBDTAutoPdf::EvalLoss(double lambda, const TVectorD &dL, int itre
     //nll value for minos constraint
     //if (evcls==0) fNLLVal += -log(static_cast<RooAbsReal*>(fStaticPdfs.at(evcls))->getValV(&parmset));
     
-    double pdfval = static_cast<RooAbsReal*>(fStaticPdfsClones[ithread].at(evcls))->getValV(&fParmSetClones[ithread]);
+    double pdfval = fStaticPdfsClones[ithread][evcls]->getValV(&fParmSetClones[ithread]);
     fEvts[ievt]->SetPdfVal(pdfval);
     
     //if (!std::isnormal(pdfval)) fStaticPdfsClones[ithread].at(evcls)->Print("V");
@@ -2949,6 +2960,12 @@ void RooHybridBDTAutoPdf::FitResponses(int selvar = -1) {
  //std::vector<TVectorD> d2Lvs(fNThreads,TVectorD(msize));
   
   
+  //map of function indices
+  std::vector<int> funcidxs(fStaticTgts.getSize());
+  for (int itgt=0; itgt<fStaticTgts.getSize(); ++itgt) {
+    funcidxs[itgt] = fFuncs.index(static_cast<RooGBRTargetFlex*>(fTgtVars.at(itgt))->Func());
+  }  
+  
   std::vector<double> nmcs(fNThreads);
   
   //printf("FitResponses start loop\n");
@@ -2996,7 +3013,7 @@ void RooHybridBDTAutoPdf::FitResponses(int selvar = -1) {
       
       int idrv = ivar;
       int itgt = ivar - fExtVars.getSize(); 
-      int ifunc = fFuncs.index(static_cast<RooGBRTargetFlex*>(fTgtVars.at(itgt))->Func());
+      int ifunc = funcidxs[itgt];
       int iel;
       if (itgt>=0) iel = localidxs[ifunc] + fEvts[iev]->CurrentNode(itgt);
       else iel = idxglobal + ivar;
@@ -3044,7 +3061,7 @@ void RooHybridBDTAutoPdf::FitResponses(int selvar = -1) {
 	int jvar = fOuterIndices[evcls][jidx];
 	int jdrv = jvar;
 	int jtgt = jvar - fExtVars.getSize();
-        int jfunc = fFuncs.index(static_cast<RooGBRTargetFlex*>(fTgtVars.at(jtgt))->Func());        
+        int jfunc = funcidxs[jtgt];     
 	int jel;      
 	if (jtgt>=0) jel = localidxs[jfunc] + fEvts[iev]->CurrentNode(jtgt);
 	else jel = idxglobal + jvar;    

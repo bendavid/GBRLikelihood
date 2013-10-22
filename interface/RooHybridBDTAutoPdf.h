@@ -481,12 +481,12 @@ protected:
   std::vector<RooArgList> fTgtCondVars;
   std::vector<RooArgList> fFuncCondVars;
   
-  std::vector<RooArgList> fCondVarsClones;
-  std::vector<RooArgList> fParmVarsClones;
-  std::vector<RooArgList> fStaticTgtsClones;
-  std::vector<RooArgList> fStaticPdfsClones;
-  std::vector<RooArgList> fFullParmsClones;
-  std::vector<RooArgList> fExtVarsClones;
+  std::vector<std::vector<RooRealVar*> > fCondVarsClones;
+  std::vector<std::vector<RooRealVar*> > fParmVarsClones;
+  std::vector<std::vector<RooRealVar*> > fStaticTgtsClones;
+  std::vector<std::vector<RooAbsReal*> > fStaticPdfsClones;
+  std::vector<std::vector<RooRealVar*> > fFullParmsClones;
+  std::vector<std::vector<RooRealVar*> > fExtVarsClones;
   std::vector<RooArgSet> fParmSetClones;
   RooArgList fClones;
   
