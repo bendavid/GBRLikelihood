@@ -267,6 +267,7 @@ public:
   virtual TObject* clone(const char* newname) const { return new RooGBRTargetFlex(*this,newname); }
   
   void SetUseFunc(bool b);
+  void ClearFuncServers();
   
   RooRealVar *Var() { return (RooRealVar*)(&_var.arg()); }
   const RooArgList &FuncVars() const { return _funcvars; }  

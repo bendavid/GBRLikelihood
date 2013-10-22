@@ -70,6 +70,7 @@
 #include <malloc.h>
 #include "../interface/GBRArrayUtils.h"
 #include "../interface/GBRMath.h"
+#include "TRandom3.h"
 
 
 ClassImp(RooTreeConvert)
@@ -669,6 +670,7 @@ RooGBRTargetFlex::RooGBRTargetFlex(const char *name, const char *title, RooGBRFu
   _eval(funcvars.getSize())
 {
   _funcvars.add(funcvars);
+  
   Var()->setConstant(_usefunc);
   
 }
@@ -683,20 +685,33 @@ RooGBRTargetFlex::RooGBRTargetFlex(const RooGBRTargetFlex& other, const char* na
   _funcvars("funcvars",this,other._funcvars),
   _eval(other._eval)
 {
-  
+    
 }
 
 //_____________________________________________________________________________
 void RooGBRTargetFlex::SetUseFunc(bool b)
 {
-  
+    
   if (_usefunc==b) return;
   
   _usefunc = b;
   Var()->setConstant(_usefunc);
-  
+
   setValueDirty();
   setShapeDirty();
+  
+}
+
+//_____________________________________________________________________________
+void RooGBRTargetFlex::ClearFuncServers() {
+  
+  //clear function and input variables from value servers,
+  //not needed during training phase
+  
+  removeServer(*_func.absArg());
+  for (int ivar=0; ivar<_funcvars.getSize(); ++ivar) {
+    removeServer(*_funcvars.at(ivar));
+  }  
   
 }
 
@@ -1285,7 +1300,13 @@ RooHybridBDTAutoPdf::RooHybridBDTAutoPdf(const char *name, const char *title, co
     }   
     for (int ivar=0; ivar<fExtVars.getSize(); ++ivar) {
       fExtVarsClones[ithread].add(*clonecomps->find(fExtVars.at(ivar)->GetName()));
-    }           
+    }
+    //remove extraneous value servers for target objects
+    for (int ivar=0; ivar<fTgtVars.getSize(); ++ivar) {
+      RooGBRTargetFlex *target = static_cast<RooGBRTargetFlex*>(clonecomps->find(fTgtVars.at(ivar)->GetName()));
+      target->ClearFuncServers();
+    }
+    
     delete clonecomps;
     delete clonevars;
     
@@ -1695,13 +1716,18 @@ void RooHybridBDTAutoPdf::TrainForest(int ntrees, bool reuseforest) {
   printf("fullparms:\n");
   fFullParms.Print("V");
   
+  TRandom3 rndtgtsel(fEvts.size());
+  
   //loop over requested number of trees
   int nunittrees = 0;
+  int nsmalltrees = 0;
   std::vector<double> nllvals;
   std::vector<double> dldrvals;
   for (int itree=0; itree<ntrees; ++itree) {
     printf("tree %i\n",itree);
 
+    bool sharedfuncs = false;
+    
     for (unsigned int iev=0; iev<fEvts.size(); ++iev) {
       for (int itgt=0; itgt<fNTargets; ++itgt) {
         fEvts.at(iev)->SetCurrentNode(itgt,0);
@@ -1727,6 +1753,7 @@ void RooHybridBDTAutoPdf::TrainForest(int ntrees, bool reuseforest) {
       //modulate through targets associated to this function
       int nfunctgts = fFuncTgts[ifunc].getSize();
       int seltgt = itree%nfunctgts;
+      //int seltgt = rndtgtsel.Integer(nfunctgts);
       int tgtidx = fTgtVars.index(fFuncTgts[ifunc].at(seltgt));
       TrainTree(fEvts,sumw,tree,0.,0,limits,tgtidx);
       
@@ -1738,6 +1765,7 @@ void RooHybridBDTAutoPdf::TrainForest(int ntrees, bool reuseforest) {
         if (itgt!=seltgt) {
           int updtgt = fTgtVars.index(fFuncTgts[ifunc].at(itgt));
           UpdateCurrentNodes(fEvts,tree,updtgt);
+          sharedfuncs = true;
         }
       }      
       
@@ -1764,6 +1792,13 @@ void RooHybridBDTAutoPdf::TrainForest(int ntrees, bool reuseforest) {
       nunittrees = 0.;
     }
     
+    if (maxtreesize>1 && maxtreesize<16) {
+      ++nsmalltrees;
+    }
+    else {
+      nsmalltrees = 0;
+    }
+    
     //FitResponses(forest);
 
     
@@ -1783,6 +1818,12 @@ void RooHybridBDTAutoPdf::TrainForest(int ntrees, bool reuseforest) {
     if (nunittrees>100) {
       printf("Max number of unit trees %i exceeded, breaking\n",nunittrees);
       break;
+    }
+
+    if (0) {
+      if (sharedfuncs && oldnllidx>=0 && (fNLLVal - nllvals[oldnllidx])>(-1.0) && nsmalltrees>10) {
+        fMinWeightTotal = 2.0*sumw;
+      }
     }
     
     if (0) {
