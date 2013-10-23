@@ -1838,6 +1838,12 @@ void RooHybridBDTAutoPdf::TrainForest(int ntrees, bool reuseforest) {
       break;
     }
 
+    int voldnllidx = nllvals.size() - 20 - 1;
+    //if (oldnllidx>=0 && (fNLLVal - nllvals[oldnllidx])>(-2e-3) && std::abs(dldrval-dldrvals[oldnllidx])<2e-1 && nunittrees>10) {
+    if (voldnllidx>=0 && (fNLLVal - nllvals[oldnllidx])>(-2e-3) && sharedfuncs) {      
+      break;
+    }    
+    
     if (0) {
       if (sharedfuncs && oldnllidx>=0 && (fNLLVal - nllvals[oldnllidx])>(-1.0) && nsmalltrees>10) {
         fMinWeightTotal = 2.0*sumw;
