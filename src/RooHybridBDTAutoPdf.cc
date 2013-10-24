@@ -133,7 +133,7 @@ RooDataSet *RooTreeConvert::CreateDataSet(std::string name, TTree *tree, std::ve
   
 }
 
-RooDataSet *RooTreeConvert::CreateDataSet(std::string name, TTree *tree, RooArgList &vars, RooRealVar &weight) {
+RooDataSet *RooTreeConvert::CreateDataSet(std::string name, TTree *tree, RooArgList &vars, RooRealVar &weight, bool limitvals) {
  
   //initialize TTreeFormulas to read variables from TTree
   std::vector<TTreeFormula*> inputforms;
@@ -181,7 +181,7 @@ RooDataSet *RooTreeConvert::CreateDataSet(std::string name, TTree *tree, RooArgL
       }
       var->setVal(val);
     }
-    if (!valid) continue;
+    if (!valid && limitvals) continue;
     
     dset->add(vars,weight);
 

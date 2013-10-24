@@ -40,7 +40,7 @@ public:
   virtual ~RooTreeConvert() {}
   
   static RooDataSet *CreateDataSet(std::string name, TTree *tree, std::vector<std::string> vars, std::string weight);
-  static RooDataSet *CreateDataSet(std::string name, TTree *tree, RooArgList &vars, RooRealVar &weight);
+  static RooDataSet *CreateDataSet(std::string name, TTree *tree, RooArgList &vars, RooRealVar &weight, bool limitvals = true);
   
   
 private:
