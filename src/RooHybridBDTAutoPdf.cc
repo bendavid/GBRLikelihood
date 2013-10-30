@@ -1408,8 +1408,8 @@ RooHybridBDTAutoPdf::~RooHybridBDTAutoPdf() {
     free(_bsepgains[ivar]);
     free(_bsepgainsigs[ivar]);
     
-    free(_wscls[ivar]);
-    free(_sumwscls[ivar]);
+    delete[] _wscls[ivar];
+    delete[] _sumwscls[ivar];
     
     free(_binquants[ivar]);
     free(_quants[ivar]);
@@ -1431,33 +1431,34 @@ RooHybridBDTAutoPdf::~RooHybridBDTAutoPdf() {
   free(_fullvars);
   free(_bestbins);
   
-  free(_ws);
-  free(_ws2);
-  free(_wscls);
-  free(_ns);
-  free(_nsd);
-  free(_tgts);
-  free(_tgt2s);
-  free(_sumws);
-  free(_sumws2);
-  free(_sumwscls);
-  free(_sumns);
-  free(_sumtgts);
-  free(_sumtgt2s);
-  free(_varvals);
-  free(_bsepgains);
-  free(_bsepgainsigs);
+  delete[] _ws;
+  delete[] _ws2;
+  delete[] _wscls;
+  delete[] _ns;
+  delete[] _nsd;
+  delete[] _tgts;
+  delete[] _tgt2s;
+  delete[] _sumws;
+  delete[] _sumws2;
+  delete[] _sumwscls;
+  delete[] _sumns;
+  delete[] _sumtgts;
+  delete[] _sumtgt2s;
+  delete[] _varvals;
+  delete[] _bsepgains;
+  delete[] _bsepgainsigs;
   
-  free(_binquants);
-  free(_quants);
+  delete[] _binquants;
+  delete[] _quants;
   
   free(_clss);
   free(_tgtvals);
   free(_tgt2vals);
   free(_weightvals);
   
-  free(fQuantileMaps);
-  
+  delete[] fQuantileMaps;
+
+
   for (unsigned int iev=0; iev<fEvts.size(); ++iev) {
     delete fEvts[iev];
     fEvts[iev] = 0;
@@ -1515,7 +1516,7 @@ void RooHybridBDTAutoPdf::UpdateTargets(int nvars, int selvar = -1) {
       fEvts.at(iev)->SetTransTarget2(itgt,0.);
     }      
 
-    for (int ivar=0; ivar<fFullFuncs.getSize(); ++ivar) {
+    for (unsigned int ivar=0; ivar<fFullParmsClones[ithread].size(); ++ivar) {
       fEvts.at(iev)->SetDerivative(ivar,0.);
       fEvts.at(iev)->SetDerivative2(ivar,0.);
     }          
@@ -1761,7 +1762,7 @@ void RooHybridBDTAutoPdf::TrainForest(int ntrees, bool reuseforest) {
       HybridGBRForestFlex *forest = static_cast<RooGBRFunctionFlex*>(fFuncs.at(ifunc))->Forest();
       forest->Trees().push_back(HybridGBRTreeD()); 
     }
-    
+        
     UpdateTargets(nvars,-1);       
     
     for (int ifunc=0; ifunc<fFuncs.getSize(); ++ifunc) {
@@ -1840,7 +1841,7 @@ void RooHybridBDTAutoPdf::TrainForest(int ntrees, bool reuseforest) {
 
     int voldnllidx = nllvals.size() - 20 - 1;
     //if (oldnllidx>=0 && (fNLLVal - nllvals[oldnllidx])>(-2e-3) && std::abs(dldrval-dldrvals[oldnllidx])<2e-1 && nunittrees>10) {
-    if (voldnllidx>=0 && (fNLLVal - nllvals[oldnllidx])>(-2e-3) && sharedfuncs) {      
+    if (voldnllidx>=0 && (fNLLVal - nllvals[voldnllidx])>(-2e-3) && sharedfuncs) {      
       break;
     }    
     
