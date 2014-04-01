@@ -43,8 +43,8 @@
        std::vector<double> &Responses() { return fResponses; }       
        const std::vector<double> &Responses() const { return fResponses; }
        
-       std::vector<unsigned char> &CutIndices() { return fCutIndices; }
-       const std::vector<unsigned char> &CutIndices() const { return fCutIndices; }
+       std::vector<unsigned short> &CutIndices() { return fCutIndices; }
+       const std::vector<unsigned short> &CutIndices() const { return fCutIndices; }
        
        std::vector<float> &CutVals() { return fCutVals; }
        const std::vector<float> &CutVals() const { return fCutVals; }
@@ -59,7 +59,7 @@
        const std::vector<std::vector<std::pair<float,float> > > &Limits() const { return fLimits; }
        
     protected:              
-	std::vector<unsigned char> fCutIndices;
+	std::vector<unsigned short> fCutIndices;
 	std::vector<float> fCutVals;
 	std::vector<int> fLeftIndices;
 	std::vector<int> fRightIndices;
@@ -68,7 +68,7 @@
       
     private:
 
-      ClassDef(HybridGBRTreeD,2)    
+      ClassDef(HybridGBRTreeD,3)    
         
   };
 
