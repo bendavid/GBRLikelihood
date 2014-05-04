@@ -78,7 +78,7 @@ inline int HybridGBRTreeD::TerminalIndex(const float* vector) const {
   
   int index = 0;
   
-  unsigned char cutindex = fCutIndices[0];
+  unsigned short cutindex = fCutIndices[0];
   float cutval = fCutVals[0];
   
   while (true) {
