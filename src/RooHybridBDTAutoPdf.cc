@@ -153,6 +153,15 @@ RooDataSet *RooTreeConvert::CreateDataSet(std::string name, TTree *tree, RooArgL
   
   RooDataSet *dset = new RooDataSet(name.c_str(),"",roovars,RooFit::WeightVar(weight));
   
+  const int nvars = vars.getSize();
+  std::vector<RooRealVar*> varsv(vars.getSize());
+  for (int ivar=0; ivar<nvars; ++ivar) {
+    varsv[ivar] = static_cast<RooRealVar*>(vars.at(ivar));
+  }
+  
+  RooArgSet varss(vars);
+  
+  
   int currenttree = -1;
   for (Long64_t iev=0; iev<tree->GetEntries(); ++iev) {
     if (iev%100000==0) printf("%i\n",int(iev));
@@ -163,27 +172,41 @@ RooDataSet *RooTreeConvert::CreateDataSet(std::string name, TTree *tree, RooArgL
     
     if (newtree) {
       cutform.Notify();
-      for (int ivar=0; ivar<vars.getSize(); ++ivar) {
+      for (int ivar=0; ivar<nvars; ++ivar) {
         inputforms[ivar]->Notify();      
       }
     }
     
-    double weight = cutform.EvalInstance();
+    int multmax = cutform.GetNdata();
+//     for (int ivar=0; ivar<vars.getSize(); ++ivar) {
+//       int mult = inputforms[ivar]->GetNdata();
+//       if (mult>multmax) multmax = mult;
+//     }
     
-    if (weight==0.) continue; //skip events with 0 weight
-    
-    bool valid = true;
-    for (int ivar=0; ivar<vars.getSize(); ++ivar) {
-      double val = inputforms[ivar]->EvalInstance();
-      RooRealVar *var = static_cast<RooRealVar*>(vars.at(ivar));
-      if (val<var->getMin() || val>var->getMax()) {
-        valid = false;
+    for (int imult=0; imult<multmax; ++imult) {
+      
+      double weight = cutform.EvalInstance(imult); 
+      if (weight==0.) continue; //skip entries with 0 weight
+      
+      bool valid = true;
+      for (int ivar=0; ivar<nvars; ++ivar) {
+        //assert(inputforms[ivar]->GetNdata()==multmax);
+        RooRealVar *var = varsv[ivar];
+        if (inputforms[ivar]->GetNdata()!=multmax) {
+          printf("multmax = %i, ivar = %i, ndata = %i\n",multmax,ivar,inputforms[ivar]->GetNdata());
+          assert(0);
+        }
+        double val = inputforms[ivar]->EvalInstance(imult);
+        if (val<var->getMin() || val>var->getMax()) {
+          valid = false;
+        }
+        var->setVal(val);
       }
-      var->setVal(val);
+      if (!valid && limitvals) continue;
+      
+      //dset->add(vars,weight);
+      dset->addFast(varss,weight);
     }
-    if (!valid && limitvals) continue;
-    
-    dset->add(vars,weight);
 
   }
 
@@ -719,8 +742,9 @@ void RooGBRTargetFlex::ClearFuncServers() {
 double RooGBRTargetFlex::EvalFunc() const
 {
   
+  RooFIter iter = _funcvars.fwdIterator();
   for (int ivar=0; ivar<_funcvars.getSize(); ++ivar) {
-    _eval[ivar] = static_cast<RooAbsReal*>(_funcvars.at(ivar))->getVal();
+    _eval[ivar] = static_cast<RooAbsReal*>(iter.next())->getVal();
     //printf("ivar = %i, var = %5f\n",ivar,_eval[ivar]);
   }  
   return static_cast<RooGBRFunctionFlex*>(_func.absArg())->Forest()->GetResponse(&_eval[0]);
@@ -2590,7 +2614,7 @@ double RooHybridBDTAutoPdf::EvalLoss(double lambda, const TVectorD &dL, int itre
   //fExtVars = extbak;
   
   for (int ivar=0; ivar<fExtVars.getSize(); ++ivar) {
-    static_cast<RooRealVar*>(fExtVars.at(ivar))->setVal(extvals[ivar]);   
+    static_cast<RooRealVar*>(fExtVars.at(ivar))->setVal(extvals[ivar]);  
   }  
   for (int ithread=0; ithread<fNThreads; ++ithread) {
     for (int ivar=0; ivar<fExtVars.getSize(); ++ivar) {
@@ -2599,6 +2623,10 @@ double RooHybridBDTAutoPdf::EvalLoss(double lambda, const TVectorD &dL, int itre
       cloneparm->setError(static_cast<RooRealVar*>(fExtVars.at(ivar))->getError());
     }
   }      
+
+//   for (unsigned int itgt=0; itgt<fStaticTgtsClones[0].size(); ++itgt) {
+//     printf("itgt = %i, statictgt = %5e +- %5e\n, const = %i", itgt, fStaticTgtsClones[0][itgt]->getVal(), fStaticTgtsClones[0][itgt]->getError(),int(fStaticTgtsClones[0][itgt]->getAttribute("Constant")));
+//   }  
   
   //printf("finalval = %5f\n",static_cast<RooRealVar*>(fExtVars.at(1))->getVal());
 
@@ -3249,6 +3277,7 @@ void RooHybridBDTAutoPdf::FitResponses(int selvar = -1) {
   double stepm = 0;
   double stepg = 0;
   
+  //solved = false;
   
   if (solved) {
     for (int i=0; i<msize; ++i) {
