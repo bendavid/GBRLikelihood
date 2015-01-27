@@ -8,6 +8,8 @@
 #include "../interface/RooCBFast.h"
 #include "../interface/RooRevCBFast.h"
 #include "../interface/RooCBExp.h"
+#include "../interface/RooRevCBExp.h"
+#include "../interface/RooGausDoubleExp.h"
 #include "../interface/RooGaussianFast.h"
 
 #ifdef __CINT__
@@ -34,6 +36,8 @@
 #pragma link C++ class RooCBFast+;
 #pragma link C++ class RooRevCBFast+;
 #pragma link C++ class RooCBExp+;
+#pragma link C++ class RooRevCBExp+;
+#pragma link C++ class RooGausDoubleExp+;
 #pragma link C++ class RooGaussianFast+;
 #pragma link C++ class HybridGBRForestFlex+;
 
