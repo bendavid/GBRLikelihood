@@ -23,8 +23,8 @@
 #include "Rtypes.h"
 
   class HybridGBRForestFlex {
-
     public:
+       typedef HybridGBRTreeD TreeT;
 
        HybridGBRForestFlex();   
        virtual ~HybridGBRForestFlex();
@@ -33,6 +33,7 @@
        
        double GetResponse(const float* vector) const;
        
+       double InitialResponse() const { return fInitialResponse; }
        void SetInitialResponse(double response) { fInitialResponse = response; }
        
        std::vector<HybridGBRTreeD> &Trees() { return fTrees; }
