@@ -419,7 +419,7 @@ protected:
 //   typedef float float;
 //   typedef double double;  
   
-  void BuildQuantiles(int nvars, double sumw);
+  void BuildQuantiles(int nvars, double sumabsw);
   void UpdateTargets(int nvars, int selvar);
   void FillDerivatives();
   
