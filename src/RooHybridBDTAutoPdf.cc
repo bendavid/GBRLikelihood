@@ -888,7 +888,8 @@ RooHybridBDTAutoPdf::RooHybridBDTAutoPdf(const char *name, const char *title, co
   fResTree(0),
   fPdfs(pdfs),
   fData(data),
-  fNThreads(std::max(1,omp_get_max_threads())),  
+  fNThreads(std::max(1,omp_get_max_threads())),
+//   fNThreads(1),  
   fLambdaVal(1.0), 
   fExternal(&n0),  
   fR(&r),  
@@ -920,6 +921,8 @@ RooHybridBDTAutoPdf::RooHybridBDTAutoPdf(const char *name, const char *title, co
   _sepgains(0),
   _ws(0)  
 {
+  
+  omp_set_num_threads(fNThreads);
   
   //printf("fN0 = %5f\n",fN0->getVal());
   
@@ -1350,6 +1353,7 @@ RooHybridBDTAutoPdf::RooHybridBDTAutoPdf(const char *name, const char *title, co
   fEvts.reserve(nev);
   
   double sumw = 0.;
+  double sumabsw = 0.;
   
   printf("second loop, fill events in memory\n");
   //loop over trees to fill arrays and event vector
@@ -1378,6 +1382,7 @@ RooHybridBDTAutoPdf::RooHybridBDTAutoPdf(const char *name, const char *title, co
       evt->SetClass(idata);
 
       sumw += evt->Weight();
+      sumabsw += std::abs(evt->Weight());
       
       for (unsigned int ivar=0; ivar<dcondvars.size(); ++ivar) {
 	evt->SetVar(ivar,dcondvars[ivar]->getVal());
@@ -1399,7 +1404,7 @@ RooHybridBDTAutoPdf::RooHybridBDTAutoPdf(const char *name, const char *title, co
   //fQuantileMaps.resize(nvars, std::vector<float>(fNQuantiles));
   
   //BuildQuantiles(nvars, sumw);
-  BuildQuantiles(nvars, sumw);  
+  BuildQuantiles(nvars, sumabsw);  
   
   
   
@@ -1589,7 +1594,7 @@ void RooHybridBDTAutoPdf::UpdateTargets(int nvars, int selvar = -1) {
   
 }
 
-void RooHybridBDTAutoPdf::BuildQuantiles(int nvars, double sumw) {
+void RooHybridBDTAutoPdf::BuildQuantiles(int nvars, double sumabsw) {
  
   //parallelize building of quantiles for each input variable
   //(sorting of event pointer vector is cpu-intensive)
@@ -1598,25 +1603,24 @@ void RooHybridBDTAutoPdf::BuildQuantiles(int nvars, double sumw) {
     printf("sorting var %i\n",ivar);
         
     
-    std::map<int,float,std::greater<float> > tmpmap;    
+    std::map<int,float,std::greater<float> > tmpmap;
     std::vector<HybridGBREvent*> evtsvarsort(fEvts.begin(),fEvts.end());
     
-    //std::sort(evtsvarsort.begin(),evtsvarsort.end(),GBRVarCMP(ivar));
     std::sort(evtsvarsort.begin(),evtsvarsort.end(),GBRVarCMP(ivar));
     
     double sumwq = 0;
     for (unsigned int iev=0; iev<evtsvarsort.size(); ++iev) {
-      sumwq += evtsvarsort[iev]->Weight();
-      int quant = int((sumwq/sumw)*(fNQuantiles-1));
+      sumwq += std::abs(evtsvarsort[iev]->Weight());
+      int quant = int((sumwq/sumabsw)*(fNQuantiles-1));
       float val = evtsvarsort[iev]->Var(ivar);
-    
+          
       //ensure that events with numerically identical values receive the same quantile
       if (iev>0 && val==evtsvarsort[iev-1]->Var(ivar)) quant = evtsvarsort[iev-1]->Quantile(ivar);
     
       evtsvarsort[iev]->SetQuantile(ivar,quant);
     
       tmpmap[quant] = val;
-    
+          
     }
     
 
@@ -1627,8 +1631,7 @@ void RooHybridBDTAutoPdf::BuildQuantiles(int nvars, double sumw) {
       if (mit!=tmpmap.end()) val = mit->second;
       else val = -std::numeric_limits<float>::max();
       
-      fQuantileMaps[ivar][i] = val;
-      
+      fQuantileMaps[ivar][i] = val;      
       
     }
     
@@ -1980,10 +1983,7 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
 
     const unsigned int nbins = ((maxquant-offset)>>pscale) + 1;
     assert(nbins<=fNBinsMax);
-    
-
-
-    
+        
     //zero arrays where necessary and 
     GBRArrayUtils::InitArrays(_ns[ivar],_tgts[ivar],_tgt2s[ivar],_bsepgains[ivar],nbins);
     
@@ -2188,8 +2188,6 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
   double sumwleft = 0.;
   double sumwright = 0.;
   
-  
-  
   for (std::vector<HybridGBREvent*>::const_iterator it = evts.begin(); it!=evts.end(); ++it) {
     if ((*it)->Var(varidxs[bestvar])>_cutvals[bestvar]) {
       ++nright;
@@ -2201,9 +2199,9 @@ void RooHybridBDTAutoPdf::TrainTree(const std::vector<HybridGBREvent*> &evts, do
       sumwleft += (*it)->Weight();
       leftevts.push_back(*it);
     }
-    
   }
   
+//   printf("bestvar = %i, nleft = %i, nright = %i, nlefts[bestvar] = %i, nrights[bestvar] = %i, cutvals[bestvar] = %5f, nmismatch = %i\n",bestvar,nleft,nright,_nlefts[bestvar],_nrights[bestvar],_cutvals[bestvar],nmismatch);
   
   assert(_nlefts[bestvar]==nleft);
   assert(_nrights[bestvar]==nright);
