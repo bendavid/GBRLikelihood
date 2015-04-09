@@ -366,7 +366,7 @@ class RooHybridBDTAutoPdf : public TNamed {
 public:
   
   //RooHybridBDTAutoPdf() {} ;
-  RooHybridBDTAutoPdf(const char *name, const char *title, const RooArgList &tgtvars, RooAbsReal &n0, RooRealVar &r, const std::vector<RooAbsData*> &data, const std::vector<RooAbsReal*> &pdfs);
+  RooHybridBDTAutoPdf(const char *name, const char *title, const RooArgList &tgtvars, RooAbsReal &n0, RooRealVar &r, const std::vector<RooAbsData*> &data, const std::vector<RooAbsReal*> &pdfs, int nthreads);
 
   ~RooHybridBDTAutoPdf();
 

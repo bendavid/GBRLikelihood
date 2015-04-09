@@ -881,14 +881,14 @@ RooHybridBDTAutoPdf *gHybridBDTAutoPointer;
 
 
 //_____________________________________________________________________________
-RooHybridBDTAutoPdf::RooHybridBDTAutoPdf(const char *name, const char *title, const RooArgList &tgtvars, RooAbsReal &n0, RooRealVar &r, const std::vector<RooAbsData*> &data, const std::vector<RooAbsReal*> &pdfs) :
+RooHybridBDTAutoPdf::RooHybridBDTAutoPdf(const char *name, const char *title, const RooArgList &tgtvars, RooAbsReal &n0, RooRealVar &r, const std::vector<RooAbsData*> &data, const std::vector<RooAbsReal*> &pdfs, int nthreads=-1) :
   TNamed(name,title),
   fTgtVars(tgtvars),
   //fCondVars(fFunc->Vars()),
   fResTree(0),
   fPdfs(pdfs),
   fData(data),
-  fNThreads(std::max(1,omp_get_max_threads())),
+  fNThreads(std::max(1, nthreads<0 ? omp_get_max_threads() : nthreads)),
 //   fNThreads(1),  
   fLambdaVal(1.0), 
   fExternal(&n0),  
@@ -1356,8 +1356,12 @@ RooHybridBDTAutoPdf::RooHybridBDTAutoPdf(const char *name, const char *title, co
   double sumabsw = 0.;
   
   printf("second loop, fill events in memory\n");
+//   printf("ncondvars = %i, nparmvars = %i, fullparms = %i, nvars = %i\n", int(fCondVars.getSize()), int(fParmVars.getSize()),int(fFullParms.getSize()),nvars);
   //loop over trees to fill arrays and event vector
-   
+//   fCondVars.Print("V"); 
+//   fParmVars.Print("V");
+//   fFullParms.Print("V");
+  
   
   //second loop here
   for (unsigned int idata=0; idata<data.size(); ++idata) {
@@ -1369,7 +1373,7 @@ RooHybridBDTAutoPdf::RooHybridBDTAutoPdf(const char *name, const char *title, co
     for (int ivar=0; ivar<fCondVars.getSize(); ++ivar) {
       dcondvars[ivar] = static_cast<RooRealVar*>(dset->find(fCondVars.at(ivar)->GetName()));
     }
-      
+    
     for (int ivar=0; ivar<fParmVars.getSize(); ++ivar) {
       dparmvars[ivar] = static_cast<RooRealVar*>(dset->find(fParmVars.at(ivar)->GetName()));
     }
@@ -1385,10 +1389,20 @@ RooHybridBDTAutoPdf::RooHybridBDTAutoPdf(const char *name, const char *title, co
       sumabsw += std::abs(evt->Weight());
       
       for (unsigned int ivar=0; ivar<dcondvars.size(); ++ivar) {
-	evt->SetVar(ivar,dcondvars[ivar]->getVal());
+	if (dcondvars[ivar]) {
+          evt->SetVar(ivar,dcondvars[ivar]->getVal());
+        }
+        else {
+          evt->SetVar(ivar,0.);
+        }
       }
       for (unsigned int ivar=0; ivar<dparmvars.size(); ++ivar) {
-	evt->SetVar(dcondvars.size() + ivar, dparmvars[ivar]->getVal());
+	if (dparmvars[ivar]) {
+          evt->SetVar(dcondvars.size() + ivar, dparmvars[ivar]->getVal());
+        }
+        else {
+          evt->SetVar(dcondvars.size() + ivar, 0.);
+        }
       }    
     }
   }

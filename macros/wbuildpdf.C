@@ -237,7 +237,7 @@ void wbuildpdf(int charge = 1, int weight=0, bool dotight=false) {
   minweights.push_back(0);  
   minweights.push_back(minweight); 
 
-  RooHybridBDTAutoPdf bdtpdfdiff("bdtpdfdiff","",tgts,etermconst,r,vdata,vpdf);
+  RooHybridBDTAutoPdf bdtpdfdiff("bdtpdfdiff","",tgts,etermconst,r,vdata,vpdf,1);
 //   bdtpdfdiff.SetMinCutSignificance(0.1);
   bdtpdfdiff.SetShrinkage(0.1);
   bdtpdfdiff.SetMinWeights(minweights);
