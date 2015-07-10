@@ -39,7 +39,6 @@
 #include "RooConstVar.h"
 #include "RooDerivative.h"
 #include "TFitter.h"
-#include "TFitterMinuit.h"
 #include "TCanvas.h"
 #include "RooPlot.h"
 #include "TRandom.h"
