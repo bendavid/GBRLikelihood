@@ -1,5 +1,6 @@
 
-<flags CXXFLAGS="-O3 -ftree-loop-linear -floop-interchange -ffast-math -fopenmp -std=gnu++0x"/>
+<flags CXXFLAGS="-O3 -ftree-loop-linear -floop-interchange -ffast-math -fopenmp -std=gnu++0x -march=native"/>
+<!-- <flags CXXFLAGS="-O3 -ftree-loop-linear -floop-interchange -ffast-math -fopenmp -std=gnu++0x"/> -->
 <use name="root"/>
 <use name="rootgraphics"/>
 <use name="rootmath"/>
@@ -11,6 +12,7 @@
 <use   name="boost_program_options"/>
 <use   name="boost_filesystem"/>
 <use   name="vdt"/>
+<use name="eigen"/>
 <export>
    <lib name="1"/>
 </export>
