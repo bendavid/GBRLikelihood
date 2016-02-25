@@ -87,10 +87,10 @@ void classifiertrainingExample() {
 
 
   //create RooDataSet from TChain
-  weightvar.SetTitle(prescale100*evenevents*basesel*sigcut);
+  weightvar.SetTitle(evenevents*prescale100*basesel*sigcut);
   RooDataSet *hdatasig = RooTreeConvert::CreateDataSet("hdatasig",tree,vars,weightvar);   
 
-  weightvar.SetTitle(prescale100*evenevents*basesel*bkgcut);
+  weightvar.SetTitle(evenevents*prescale100*basesel*bkgcut);
   RooDataSet *hdatabkg = RooTreeConvert::CreateDataSet("hdatabkg",tree,vars,weightvar);     
   
   //RooRealVars corresponding to regressed parameters (in the simple classifier case this will just be the ln s/b)
@@ -112,7 +112,7 @@ void classifiertrainingExample() {
   //define log-likelihoods for signal and background, which for the simple classifier case lead to the "logistic regression" likelihood used for example in TMVA gradient boosted BDT classifiers
   //the s/b ratio is appropriately rescaled to compensate for possible different training sample sizes between signal and background
   //For the likelihood defined below, the minimized loss function is
-  //L = -sum_signal w*ln(S*exp(F)/(B + w*S*exp(F))) - sum_background w*ln(B/(B + w*S*exp(F)))
+  //L = -sum_signal w*ln(S*exp(F)/(B + S*exp(F))) - sum_background w*ln(B/(B + S*exp(F)))
   // where:
   //S is the sum of weights for the signal training sample
   //B is the sum of weights for the background training sample
@@ -155,12 +155,12 @@ void classifiertrainingExample() {
   //if MinCutSignificance is not set, then the number of trees needs to be explicitly set to a finite number
   {
     RooHybridBDTAutoPdf bdtpdfdiff("bdtpdfdiff","",tgts,etermconst,r,vdata,vpdf);
-    bdtpdfdiff.SetMinCutSignificance(3.);  //minimum statistical significance of estimated likelihood gain for a tree split
-    bdtpdfdiff.SetMaxDepth(5); //max decision tree depth
-    bdtpdfdiff.SetShrinkage(0.1); //shrinkage parameter by which the current tree response is de-weighted at each iteration ("learning-rate")
+//     bdtpdfdiff.SetMinCutSignificance(1.);  //minimum statistical significance of estimated likelihood gain for a tree split
+//     bdtpdfdiff.SetMaxDepth(5); //max decision tree depth
+    bdtpdfdiff.SetShrinkage(0.05); //shrinkage parameter by which the current tree response is de-weighted at each iteration ("learning-rate")
     bdtpdfdiff.SetMinWeightTotal(1000.); //minimum sum of weights on a terminal node
     bdtpdfdiff.SetMaxNodes(750); //maximum terminal nodes per tree, needed to keep matrix inversion CPU time under control at each iteration
-    bdtpdfdiff.TrainForest(1e6);   //this is the number of trees
+    bdtpdfdiff.TrainForest(250);   //this is the number of trees
   }
      
   //create workspace and output to file

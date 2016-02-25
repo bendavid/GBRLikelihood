@@ -11,6 +11,9 @@
 #include "../interface/RooRevCBExp.h"
 #include "../interface/RooGausDoubleExp.h"
 #include "../interface/RooGaussianFast.h"
+#include "../interface/MCGBRForest.h"
+#include "../interface/MCGBRTreeD.h"
+
 
 #ifdef __CINT__
 #pragma link off all globals;
@@ -40,6 +43,8 @@
 #pragma link C++ class RooGausDoubleExp+;
 #pragma link C++ class RooGaussianFast+;
 #pragma link C++ class HybridGBRForestFlex+;
+#pragma link C++ class MCGBRForest+;
+#pragma link C++ class MCGBRTreeD+;
 
  
 

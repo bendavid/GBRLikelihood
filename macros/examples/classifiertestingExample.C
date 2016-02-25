@@ -86,10 +86,10 @@ void classifiertestingExample() {
 
 
   //create RooDataSet from TChain
-  weightvar.SetTitle(prescale100test*basesel*sigcut);
+  weightvar.SetTitle(oddevents*basesel*sigcut);
   RooDataSet *hdatasig = RooTreeConvert::CreateDataSet("hdatasig",tree,vars,weightvar);   
 
-  weightvar.SetTitle(prescale100test*basesel*bkgcut);
+  weightvar.SetTitle(oddevents*basesel*bkgcut);
   RooDataSet *hdatabkg = RooTreeConvert::CreateDataSet("hdatabkg",tree,vars,weightvar);     
  
   //S/(S+B) defined on interval 0,1
