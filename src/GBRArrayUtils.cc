@@ -22,6 +22,25 @@ void GBRArrayUtils::InitArrays(int *__restrict__ ns, double *__restrict__ tgts, 
   }
    
 }
+
+void GBRArrayUtils::InitArrays(int *__restrict__ ns, double *__restrict__ tgts, double *__restrict__ tgt2s, double *__restrict__ bsepgains, const int nbins) {
+ 
+#if  __GNUC__>4 || (__GNUC__==4 && __GNUC_MINOR__>=7)
+  ns = (int*)__builtin_assume_aligned(ns,32);
+  tgts = (double*)__builtin_assume_aligned(tgts,32);
+  tgt2s = (double*)__builtin_assume_aligned(tgt2s,32);
+  bsepgains = (double*)__builtin_assume_aligned(bsepgains,32);
+#endif  
+  
+  for (int ibin=0; ibin<nbins; ++ibin) {
+    ns[ibin] = 0;
+    tgts[ibin] = 0.;
+    tgt2s[ibin] = 0.;     
+    
+    bsepgains[ibin] = -std::numeric_limits<double>::max();
+  }
+   
+}
     
 void GBRArrayUtils::ZeroArray(double *__restrict__ wscls, const int nbins) {
   

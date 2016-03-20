@@ -47,18 +47,18 @@ void mcinttest() {
   
   
 
-  MCGBRIntegrator mcint("mcint","",1000);
+  MCGBRIntegrator mcint("mcint","",2e3);
 //   mcint.SetMinCutSignificance(std::numeric_limits<double>::min());
-  mcint.SetMinCutSignificance(10.);
-//   mcint.SetMinCutSignificance(1e-9);
+  mcint.SetMinCutSignificance(5.);
+// //   mcint.SetMinCutSignificance(1e-9);
 //     mcint.SetMinCutSignificance(10.);
 //   mcint.SetMaxDepth(3);
   mcint.SetMinEvents(10);
 //   mcint.SetMinEvents(20);
-  mcint.SetShrinkage(0.01);
-//   mcint.SetShrinkage(0.01);
-//   mcint.SetMaxNodes(100);    
-  mcint.TrainForest(1500);
+//   mcint.SetShrinkage(0.1);
+  mcint.SetShrinkage(0.1);
+//   mcint.SetMaxNodes(10e3);    
+  mcint.TrainForest(150);
   
   
 //   const MCGBRTreeD *gentree = mcint.GenTree();
@@ -102,9 +102,12 @@ void mcinttest() {
     }
     
     
-    double targetmin;
-    double target3;
-    double yval = gentree->GetResponse(vals.data(),targetmin,target3);      
+//     double targetmin;
+//     double target3;
+    double targetmin = mcint.Forest()->GetResponse(vals.data());      
+    double target = mcint.ForestGen()->GetResponse(vals.data());      
+    
+    double yval = exp(targetmin);
 //           
     double yvaltrue = mcint.Camel(nvars,valsd.data());
     
@@ -166,6 +169,8 @@ void mcinttest() {
 //     printf("ibin = %i, x = %5f, yval = %5f\n",ibin,x,yval);
     hfunc->SetPoint(ibin,x,yval);
     hfunc2->SetPoint(ibin,x,yvaltrue);
+    hfunc3->SetPoint(ibin,x,target);
+
     
 //     hfunc2->SetPoint(ibin,x,exp(targetmin));
 //     hfunc3->SetPoint(ibin,x,target3);
@@ -183,7 +188,6 @@ void mcinttest() {
   
   
   TCanvas *cfunc = new TCanvas;
-//   gaus->Draw();
   hfunc2->Draw("APL");
   hfunc->Draw("LPSAME");
   
@@ -205,8 +209,14 @@ void mcinttest() {
 //     
   
   new TCanvas;
-  hfunc->Draw("ALP");
-//   
+  hfunc2->Draw("APL");
+  hfunc->Draw("LPSAME");
+
+  new TCanvas;
+  hfunc2->Draw("APL");
+  hfunc3->Draw("LPSAME");
+  
+  //   
 //   new TCanvas;
 //   hfunc2->Draw("ALP");  
 //   

@@ -69,15 +69,16 @@ inline double MCGBRForest::GetResponse(const float* vector) const {
 //_______________________________________________________________________
 inline double MCGBRForest::GetResponse(const float* vector, double &responsemin, double &response3) const {
   double response = fInitialResponse;
-//   absresponse = std::max(0.,fInitialResponse);
+//   responsemin = std::max(0.,fInitialResponse);
   responsemin = fInitialResponseMin;
   response3 = 0.;
   for (std::vector<MCGBRTreeD>::const_iterator it=fTrees.begin(); it!=fTrees.end(); ++it) {
     int termidx = it->TerminalIndex(vector);
-//     double treeresponse = it->GetResponse(termidx);
-    response += it->GetResponse(termidx);
+    double treeresponse = it->GetResponse(termidx);
+//     response += it->GetResponse(termidx);
+    response += treeresponse;
 //     absresponse += std::max(0.,treeresponse);
-//     absresponse += std::abs(treeresponse);
+//     responsemin += std::abs(treeresponse);
     responsemin += it->GetResponseMin(termidx);
     response3 += it->GetResponse3(termidx);
   }    

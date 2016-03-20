@@ -8,6 +8,7 @@ class GBRArrayUtils {
   
 protected:
  static void InitArrays(int *ns, double *tgts, double *tgt2s, float *bsepgains, const int nbins);
+ static void InitArrays(int *ns, double *tgts, double *tgt2s, double *bsepgains, const int nbins);
  static void ZeroArray(double *wscls, const int nbins);
  static void MaxArray(double *wscls, const int nbins);
  static void MinArray(double *wscls, const int nbins);

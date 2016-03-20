@@ -44,19 +44,30 @@ public:
   void TrainForest(int ntrees, bool reuseforest = false);  
   
   const MCGBRForest *Forest() const { return fForest; }
+  const MCGBRForest *ForestGen() const { return fForestGen; }
   const MCGBRTreeD *GenTree() const { return fGenTree; }
   
   double Camel(int nDim, double *Xarg) const;
+  double Camelrnd(int nDim, double *Xarg) const;
 
   
 protected:
 
+//   double NLSkewGaus(double x, double mu) const;
+  double NLSkewGausDMu(double x, double envelope, double extx, bool doenv) const;
+  double NLSkewGausD2Mu(double x, double envelope,double extx, bool doenv) const;
+  
+  double NLNormDMu(double x, double mu, double sigma) const;
+  double NLNormD2Mu(double x, double mu, double sigma) const;
+
+  double NLLogNormDMu(double x, double mu) const;
+  double NLLogNormD2Mu(double x, double mu) const;  
   
   void BuildQuantiles(int nvars, double sumabsw);
   void FillDerivatives();
   
-  void TrainTree(const std::vector<MCGBREvent*> &evts, double sumwtotal, MCGBRTreeD &tree, int depth, std::vector<std::pair<float,float> > limits, bool usetarget);      
-  void BuildLeaf(const std::vector<MCGBREvent*> &evts, MCGBRTreeD &tree, const std::vector<std::pair<float,float> > &limits);
+  void TrainTree(const std::vector<MCGBREvent*> &evts, double sumwtotal, MCGBRTreeD &tree, int depth, std::vector<std::pair<float,float> > limits, bool usetarget, bool doenv=false);      
+  void BuildLeaf(const std::vector<MCGBREvent*> &evts, MCGBRTreeD &tree, const std::vector<std::pair<float,float> > &limits, bool doenv=false);
     
 
   int fNThreads;
@@ -86,19 +97,20 @@ protected:
   double                   fNLLVal;
   
   MCGBRForest             *fForest;
+  MCGBRForest             *fForestGen;
   MCGBRTreeD              *fGenTree;
   std::vector<std::pair<float,float> > fLimits;
   
   
-  float *_sepgains; 
-  float *_sepgainsigs; 
+  double *_sepgains; 
+  double *_sepgainsigs; 
   float *_cutvals;  
   int *_nlefts; 
   int *_nrights; 
-  float *_sumwlefts; 
-  float *_sumwrights;   
-  float *_sumtgtlefts; 
-  float *_sumtgtrights; 
+  double *_sumwlefts; 
+  double *_sumwrights;   
+  double *_sumtgtlefts; 
+  double *_sumtgtrights; 
   float *_leftvars; 
   float *_rightvars;       
   float *_fullvars; 
@@ -138,8 +150,8 @@ protected:
   int **_varvalmins;
   int **_sumvarvalmaxs;
   int **_sumvarvalmins;  
-  float **_bsepgains; 
-  float **_bsepgainsigs;       
+  double **_bsepgains; 
+  double **_bsepgainsigs;       
   
   int **_quants; 
   int **_binquants; 
@@ -164,6 +176,12 @@ protected:
   std::vector<double> fStepSizes;
   
   std::vector<MCGBREvent*> fEvts;
+  std::vector<MCGBREvent*> fEvts2;
+  
+  double shrinkagefactor;
+  double fForestIntegralNow;
+  double fSigmaScale;
+  double fShrinkageFactorSecondary;
   
   
 };
