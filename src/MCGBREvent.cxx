@@ -9,7 +9,9 @@ MCGBREvent::MCGBREvent(int nvars) :
   fWeight(1.0),
   fTarget(0.),
   fTargetMin(0.),
-  fTarget3(0.)
+  fTarget3(0.),
+  fArg(0.),
+  fArgLog(0.)
 {
   
 }

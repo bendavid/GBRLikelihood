@@ -33,7 +33,9 @@
         fWeight(other.fWeight),
         fTarget(other.fTarget),
         fTargetMin(other.fTargetMin),
-        fTarget3(other.fTarget3) {
+        fTarget3(other.fTarget3),
+        fArg(other.fArg),
+        fArgLog(other.fArgLog) {
 	  
           fVars = new float[nvars];
           fQuantiles = new int[nvars];
@@ -69,7 +71,14 @@
        void SetTargetMin(double x) { fTargetMin = x; }         
        
        double Target3() const { return fTarget3; }
-       void SetTarget3(double x) { fTarget3 = x; }        
+       void SetTarget3(double x) { fTarget3 = x; }
+       
+       double Arg() const { return fArg; }
+       void SetArg(double x) { fArg = x; }
+       
+       double ArgLog() const { return fArgLog; }
+       void SetArgLog(double x) { fArgLog = x; }
+       
        
     protected:
       float                    *fVars;
@@ -80,6 +89,8 @@
       double                    fTarget;
       double                    fTargetMin;
       double                    fTarget3;
+      double                    fArg;
+      double                    fArgLog;
   };
   
   

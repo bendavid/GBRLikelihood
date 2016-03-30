@@ -44,21 +44,26 @@
   
 void mcinttest() {
      
-  
-  
+  TString dirname = "plotstest";
+  gSystem->mkdir(dirname,true);
+  gSystem->cd(dirname);
 
-  MCGBRIntegrator mcint("mcint","",2e3);
+  MCGBRIntegrator mcint("mcint","",2e4,2e5);
+  mcint.SetNEventsBagged(5e5);
 //   mcint.SetMinCutSignificance(std::numeric_limits<double>::min());
   mcint.SetMinCutSignificance(5.);
 // //   mcint.SetMinCutSignificance(1e-9);
 //     mcint.SetMinCutSignificance(10.);
-//   mcint.SetMaxDepth(3);
+//   mcint.SetMaxDepth(9);
   mcint.SetMinEvents(10);
 //   mcint.SetMinEvents(20);
 //   mcint.SetShrinkage(0.1);
   mcint.SetShrinkage(0.1);
-//   mcint.SetMaxNodes(10e3);    
-  mcint.TrainForest(150);
+//   mcint.SetDoEnvelope(true);
+//   mcint.SetStagedGeneration(true);
+//   mcint.SetNEventsInitial(1e6);
+//   mcint.SetMaxNodes(1e3);    
+  mcint.TrainForest(120);
   
   
 //   const MCGBRTreeD *gentree = mcint.GenTree();
@@ -88,7 +93,7 @@ void mcinttest() {
   std::vector<float> vals(10,0.);
   std::vector<double> valsd(10,0.);
   
-  const unsigned int nvars = 4;
+  const unsigned int nvars = 9;
   
 //   int ipoint2d=0;
  for (int ibin=0; ibin<nbins; ++ibin) {
@@ -184,19 +189,46 @@ void mcinttest() {
   hfunc2->SetLineColor(kRed);
   hfunc2->SetMarkerColor(kRed);
   
+  hfunc3->SetLineColor(kBlue);
+  hfunc3->SetMarkerColor(kBlue);
+  
   TF1 *gaus = new TF1("gaus","exp(-0.5*x*x)",low,high);
   
   
   TCanvas *cfunc = new TCanvas;
   hfunc2->Draw("APL");
   hfunc->Draw("LPSAME");
+  hfunc3->Draw("LPSAME");
   
   hfunc2->GetXaxis()->SetTitle("d, distance along multidimensional diagonal (a.u.)");
   hfunc2->GetYaxis()->SetTitle("function value (a.u.)");
   
+  TLegend *leg = new TLegend(0.62,0.6, 0.88,0.9);
+  leg->AddEntry(hfunc2,"f(#bar{x}) (Camel)","L");
+  leg->AddEntry(hfunc,"e^{h(#bar{x})} (Primary BDT)","L");
+  leg->AddEntry(hfunc3,"g(#bar{x}) (Secondary BDT)","L");
+  leg->SetBorderSize(0);
+  leg->SetFillStyle(0);
+  leg->Draw();
+  
   cfunc->SaveAs("func.pdf");
-  cfunc->SetLogy();
-  cfunc->SaveAs("funclog.pdf");
+
+  TCanvas *cfunclog = new TCanvas;
+  hfunc2->Draw("APL");
+  hfunc->Draw("LPSAME");
+  hfunc3->Draw("LPSAME");
+  
+  cfunclog->SetLogy();
+  
+  TLegend *leglog = new TLegend(0.25,0.15, 0.65,0.45);
+  leglog->AddEntry(hfunc2,"f(#bar{x}) (Camel)","L");
+  leglog->AddEntry(hfunc,"e^{h(#bar{x})} (Primary BDT)","L");
+  leglog->AddEntry(hfunc3,"g(#bar{x}) (Secondary BDT)","L");
+  leglog->SetBorderSize(0);
+  leglog->SetFillStyle(0);
+  leglog->Draw();
+  
+  cfunclog->SaveAs("funclog.pdf");
   
 //   
 /*  new TCanvas;
@@ -208,13 +240,13 @@ void mcinttest() {
   hfunc3->Draw("LPSAME"); */ 
 //     
   
-  new TCanvas;
-  hfunc2->Draw("APL");
-  hfunc->Draw("LPSAME");
-
-  new TCanvas;
-  hfunc2->Draw("APL");
-  hfunc3->Draw("LPSAME");
+//   new TCanvas;
+//   hfunc2->Draw("APL");
+//   hfunc->Draw("LPSAME");
+// 
+//   new TCanvas;
+//   hfunc2->Draw("APL");
+//   hfunc3->Draw("LPSAME");
   
   //   
 //   new TCanvas;

@@ -100,16 +100,21 @@ double MCGBRIntegrator::Camelrnd(int nDim, double *Xarg) const {
 //   
 // }
 
-double MCGBRIntegrator::NLSkewGausDMu(double x, double envelope, double extx, bool doenv) const {
+double MCGBRIntegrator::NLSkewGausDMu(double x, double envelope) const {
 //   const double sigma = doenv ? std::min(10.,std::max(1e-1,0.1*extx)) : 0.01;
 //   const double sigma = doenv ? std::max(1e-1,0.1*x) : 0.01;
-  const double sigma = doenv ? 1. : 0.01;
-  const double alpha = doenv ? 0. : 0.;
+//   const double sigma = doenv ? 1. : 0.01;
+//   const double alpha = doenv ? 0. : 0.;
+  
+  
+  const double sigma = 0.01;
+  const double alpha = 100.;
   
   const double k1 = 0.5/sigma/sigma;
   const double k2 = alpha/sigma/sqrt(2.);
   
-  double mu = std::abs(alpha) > 0. ? envelope - 5.*sigma/alpha : envelope;
+//   double mu = std::abs(alpha) > 0. ? envelope - 5.*sigma/alpha : envelope;
+  double mu = envelope;
   
   double g = k2*(x-mu);
   double erfcxval = 1./(sqrt(M_PI)*Faddeeva::erfcx(g));
@@ -120,16 +125,20 @@ double MCGBRIntegrator::NLSkewGausDMu(double x, double envelope, double extx, bo
   
 }
 
-double MCGBRIntegrator::NLSkewGausD2Mu(double x, double envelope, double extx, bool doenv) const {
+double MCGBRIntegrator::NLSkewGausD2Mu(double x, double envelope) const {
 //   const double sigma = doenv ? std::min(10.,std::max(1e-1,0.1*extx)) : 0.01;
 //   const double sigma = doenv ? std::max(1e-1,0.1*x) : 0.01;
-  const double sigma = doenv ? 1. : 0.01;
-  const double alpha = doenv ? 0. : 0.;
+//   const double sigma = doenv ? 1. : 0.01;
+//   const double alpha = doenv ? 0. : 0.;
+  
+  const double sigma = 0.01;
+  const double alpha = 100.;
   
   const double k1 = 0.5/sigma/sigma;
   const double k2 = alpha/sigma/sqrt(2.);
   
-  double mu = std::abs(alpha) > 0. ? envelope - 5.*sigma/alpha : envelope;
+//   double mu = std::abs(alpha) > 0. ? envelope - 5.*sigma/alpha : envelope;
+  double mu = envelope;
   
   double g = k2*(x-mu);
   double erfcxval = 1./(sqrt(M_PI)*Faddeeva::erfcx(g));
@@ -147,7 +156,7 @@ double MCGBRIntegrator::NLSkewGausD2Mu(double x, double envelope, double extx, b
 }
 
 double MCGBRIntegrator::NLNormDMu(double x, double mu, double sigma) const {
-//   constexpr double sigma = 0.05;
+//   constexpr double sigma = 0.01;
   const double k = 0.5/sigma/sigma;
   
   double drv = -2.*k*(x-mu);
@@ -155,7 +164,7 @@ double MCGBRIntegrator::NLNormDMu(double x, double mu, double sigma) const {
 }
 
 double MCGBRIntegrator::NLNormD2Mu(double x, double mu, double sigma) const {
-//   constexpr double sigma = 0.05;
+//   constexpr double sigma = 0.01;
   const double k = 0.5/sigma/sigma;
   
   double drv = 2.*k;
@@ -315,7 +324,7 @@ double MCGBRIntegrator::NLLogNormD2Mu(double x, double mu) const {
 
 
 //_____________________________________________________________________________
-MCGBRIntegrator::MCGBRIntegrator(const char *name, const char *title, int nevents) :
+MCGBRIntegrator::MCGBRIntegrator(const char *name, const char *title, int nevents, int neventsintial) :
   TNamed(name,title),
   fNThreads(std::max(1,omp_get_max_threads())),
 //   fNThreads(1),  
@@ -328,20 +337,27 @@ MCGBRIntegrator::MCGBRIntegrator(const char *name, const char *title, int nevent
 //   fNQuantiles(nevents+2),
 //   fNQuantiles(pow(2,30)+1),
 //   fNQuantiles(4*nevents),
+//   fNBinsMax(128),
   fNBinsMax(128),
 //   fNBinsMax(std::numeric_limits<unsigned short>::max()+1),
   fMinCutSignificance(-99.),
   fMinCutSignificanceMulti(-99.),
   fNEvents(nevents),
+  fNEventsInitial(neventsintial),
+  fNEventsBagged(-99),
   fMaxDepth(-1),
   fMaxNodes(-1),
-  fNVars(4),
+  fNVars(9),
   fForest(0),
   fForestGen(0),
   fGenTree(0),
   _sepgains(0),
   _ws(0),
-  fSigmaScale(1.)
+  fSigmaScale(1.),
+  fDoEnvelope(false),
+  fStagedGeneration(false),
+  fSigmaRatio(1.),
+  fIntegralRatio(1.)
 {
   
   Eigen::initParallel();
@@ -350,7 +366,7 @@ MCGBRIntegrator::MCGBRIntegrator(const char *name, const char *title, int nevent
 
   int nvars = fNVars;
   int ncls = 1;
-  int nev = fNEvents;
+  int nev = fNEventsInitial;
    
   //initialize arrays (ensure 32 byte alignment for avx vector instructions)
 
@@ -543,8 +559,9 @@ MCGBRIntegrator::MCGBRIntegrator(const char *name, const char *title, int nevent
 //     funcval = funcval + 0.05 + 0.01*gRandom->Gaus();
 //     funcval = funcval + 0.01*gRandom->Gaus();
     evt.SetFuncVal(funcval);
+    evt.SetFuncValAlt(vdt::fast_log(funcval));
 //     double logsigma = log(funcval) + 1.*gRandom->Gaus();
-    evt.SetFuncValAlt(exp(0.1*gRandom->Gaus()));
+//     evt.SetFuncValAlt(exp(0.1*gRandom->Gaus()));
 //     evt.SetTarget(fForestGen->InitialResponse());
 //     evt.SetTargetMin(fForest->InitialResponse());
 //     evt.SetWeight(1./funcval/funcval);
@@ -750,7 +767,7 @@ void MCGBRIntegrator::BuildQuantiles(int nvars, double sumabsw) {
   //(sorting of event pointer vector is cpu-intensive)
   #pragma omp parallel for
   for (int ivar=0; ivar<nvars; ++ivar) {
-    printf("sorting var %i\n",ivar);
+//     printf("sorting var %i\n",ivar);
         
     
     std::map<int,float,std::greater<float> > tmpmap;
@@ -821,6 +838,9 @@ void MCGBRIntegrator::BuildQuantiles(int nvars, double sumabsw) {
 
 void MCGBRIntegrator::TrainForest(int ntrees, bool reuseforest) {
 
+  if (fDoEnvelope) {
+    fStagedGeneration = true;
+  }
     
 //   int nvars = fNVars;
 //   int nvarstrain = fNVars;
@@ -870,11 +890,13 @@ void MCGBRIntegrator::TrainForest(int ntrees, bool reuseforest) {
   }
   
   
-  fForest->SetInitialResponse(-24.);
+  fForest->SetInitialResponse(-128.);
+//   fForest->SetInitialResponse(0.);
 //   fForest->SetInitialResponseMin(0.);
 //   fForest->SetInitialResponseMin(-log(100.));
   
-  fForestGen->SetInitialResponse(exp(-24.));
+//   fForestGen->SetInitialResponse(exp(-128.));
+  fForestGen->SetInitialResponse(0.);
 //   fForestGen->SetInitialResponseMin(0.);  
   
 //   const double initialraw = exp(fForest->InitialResponse());
@@ -928,10 +950,15 @@ void MCGBRIntegrator::TrainForest(int ntrees, bool reuseforest) {
 //       fMinEvents = 1;
 //       fMinCutSignificance = 2.;
 //     }
-
+	  
     
     double sumw = 0.;
     int nev = fEvts.size();
+    
+//     int nev = std::min(int(1e5),int(fEvts.size()));
+    std::vector<MCGBREvent*> evtstrimmed(fEvts.end()-nev,fEvts.end());
+    fEvts.swap(evtstrimmed);
+    
     for (std::vector<MCGBREvent*>::iterator it=fEvts.begin(); it!=fEvts.end(); ++it) {
       sumw += (*it)->Weight();
     }  
@@ -980,31 +1007,84 @@ void MCGBRIntegrator::TrainForest(int ntrees, bool reuseforest) {
     fForestGen->Trees().emplace_back();
     MCGBRTreeD &gentree = fForestGen->Trees().back();
 
+    constexpr double cutoff = exp(-128.);
+    
+    int nevrnd = nev;
+    std::vector<MCGBREvent*> rndevts;
+    
+    if (fNEventsBagged>0) {
+      nevrnd = std::min(int(fEvts.size()),fNEventsBagged);
+      rndevts.reserve(nevrnd);
+      for (int iev=0; iev<nevrnd; ++iev) {
+        int evidx = gRandom->Integer(fEvts.size());
+        rndevts.push_back(fEvts[evidx]);
+      }
+    }
+    else {
+      rndevts = fEvts;
+    }
+    
+    #pragma omp parallel for simd
+    for (int iev=0; iev<nevrnd; ++iev) {
+      const double target = rndevts[iev]->Target();
+      const double targetmin = rndevts[iev]->TargetMin();
+//       const double funcval = rndevts[iev]->FuncVal();
+      const double funcvalalt = rndevts[iev]->FuncValAlt();
+      
+      _tgtvals[iev] = vdt::fast_log(std::max(cutoff,vdt::fast_exp(targetmin)-target));
+//       _tgtvals[iev] = vdt::fast_log(std::max(cutoff,funcval-target));
+      _tgt2vals[iev] = funcvalalt - targetmin;
+    }  
+    
+    for (int iev=0; iev<nevrnd; ++iev) {
+      rndevts[iev]->SetArg(_tgtvals[iev]);
+      rndevts[iev]->SetArgLog(_tgt2vals[iev]);
+    }
+    
+/*    #pragma omp parallel for
+    for (int iev=0; iev<nev; ++iev) {
+      const double target = fEvts[iev]->Target();
+      const double targetmin = fEvts[iev]->TargetMin();
+//       const double funcval = fEvts[iev]->FuncVal();
+      const double funcvalalt = fEvts[iev]->FuncValAlt();
+      
+      _tgtvals[iev] = vdt::fast_log(std::max(cutoff,vdt::fast_exp(targetmin)-target));
+//       _tgtvals[iev] = vdt::fast_log(std::max(cutoff,funcval-target));
+      _tgt2vals[iev] = funcvalalt - targetmin;
+    }  */  
+    
+//     for (int iev=0; iev<nev; ++iev) {
+//       fEvts[iev]->SetArg(_tgtvals[iev]);
+//       fEvts[iev]->SetArgLog(_tgt2vals[iev]);
+//     }
     
     printf("training tree\n");
     if (dologtrain) {
-      TrainTree(fEvts,sumw,tree,0,limits,true,false);
+//       TrainTree(fEvts,sumw,tree,0,limits,true,false);
+// #pragma omp parallel
+      TrainTree(rndevts,sumw,tree,0,limits,true,false);
       
-//       for (MCGBREvent *evt : fEvts) {
-//         for (int ivar=0; ivar<fNVars; ++ivar) {
-//           evalv[ivar] = evt->Var(ivar);
-//         }
-//         double responsemin = tree.GetResponse(evalv.data());
-//         evt->SetTargetMin(evt->TargetMin() + responsemin);
-// 
-//       }
+      for (MCGBREvent *evt : fEvts) {
+        for (int ivar=0; ivar<fNVars; ++ivar) {
+          evalv[ivar] = evt->Var(ivar);
+        }
+        double responsemin = tree.GetResponse(evalv.data());
+        evt->SetTargetMin(evt->TargetMin() + responsemin);
+
+      }
       
     }
 //     TrainTree(fEvts,sumw,gentree,0,limits,true,true);   
-    TrainTree(fEvts,sumw,gentree,0,limits,true,true);   
-//     for (MCGBREvent *evt : fEvts) {
-//       for (int ivar=0; ivar<fNVars; ++ivar) {
-//         evalv[ivar] = evt->Var(ivar);
-//       }
-//       double response = gentree.GetResponse(evalv.data());
-//       evt->SetTarget(evt->Target() + response);
-// 
-//     }
+// #pragma omp parallel
+    TrainTree(rndevts,sumw,gentree,0,limits,true,true);   
+    for (MCGBREvent *evt : fEvts) {
+      for (int ivar=0; ivar<fNVars; ++ivar) {
+        evalv[ivar] = evt->Var(ivar);
+      }
+      double response = gentree.GetResponse(evalv.data());
+      evt->SetTarget(evt->Target() + response);
+
+    }
     
     
     fGenTree = &fForest->Trees().front();
@@ -1070,7 +1150,7 @@ void MCGBRIntegrator::TrainForest(int ntrees, bool reuseforest) {
     }
     fForestIntegralNow = forestintegral;
 //     lasttreeintegral = treeintegral;
-    printf("treeintegral = %5f, forestintegral = %5f\n",treeintegral,forestintegral);
+    printf("treeintegral = %5e, forestintegral = %5e\n",treeintegral,forestintegral);
     posprobboundstrees.push_back(sumposprob);
     
     
@@ -1177,6 +1257,7 @@ void MCGBRIntegrator::TrainForest(int ntrees, bool reuseforest) {
     int nevold = nev;
 
     bool dogenevents = (numtrees<ntrees/2);
+//     dogenevents = (numtrees<150);
     dogenevents = true;
 //     fEvts.clear();
     bool islast = false;
@@ -1188,11 +1269,23 @@ void MCGBRIntegrator::TrainForest(int ntrees, bool reuseforest) {
     }
     else {
 //       nev += fNEvents;
-      nev += 10*fNEvents;
+//       nev += 100*fNEvents;
+      nev += 20e3;
       islast = true;
 //       nev += 2*1000*1000;
     }
     
+//     if (islast) {
+//       fStagedGeneration = true;
+//     }
+    
+//     if (fDoEnvelope) {
+// //       fMinEvents = std::max(10,nev/300);
+//       fMinEvents = 1e3;
+//     }
+    
+    std::vector<double> weightv;
+    weightv.reserve(nev-nevold);
     
 //     nev += fNEvents/100;
     fEvts.reserve(nev);    
@@ -1221,6 +1314,9 @@ void MCGBRIntegrator::TrainForest(int ntrees, bool reuseforest) {
     double sum1 = 0.;
     double sum1sq = 0.;
     double sumw1 = 0.;
+    
+    double sum1t = 0.;
+    double sum1tsq = 0.;
 
     double sumct = 0.;
     double sumctw = 0.;
@@ -1229,6 +1325,15 @@ void MCGBRIntegrator::TrainForest(int ntrees, bool reuseforest) {
     double sum2 = 0.;
     double sum2sq = 0.;
     double sumw2 = 0.;    
+    
+    double sumw2t = 0.;
+    double sum2t = 0.;
+    double sum2tsq = 0.;
+    
+    double suminter = 0.;
+    double sumintersq = 0.;
+    
+    double maxsigmaratio = std::numeric_limits<double>::lowest();
     
 //     double sumdiff = 0.;
 //     double sumdiffsq = 0.;
@@ -1265,8 +1370,14 @@ void MCGBRIntegrator::TrainForest(int ntrees, bool reuseforest) {
     
 //     double scaleorigin = forestintegral > 0. && integral2now > 0. ? 1.5*integral2now/forestintegral : 1.;
 //     double scaleorigin = islast ? 100. : 1.5;
-    double scaleorigin = islast ? 1.5 : 1.5;
-//     double scaleorigin = 1.;
+//     double scaleorigin = islast ? 1.5 : 1.5;
+    double scaleorigin = fStagedGeneration ? 4. : 1.;
+//     if (fStagedGeneration) {
+//       scaleorigin = std::min(100.,std::max(1.,std::max(4.*fIntegralRatio, 4.*fSigmaRatio*fSigmaRatio)));
+//     }
+    
+    printf("scaleorigin = %5f, fIntegralRatio = %5f, fSigmaRatio = %5f\n",scaleorigin, fIntegralRatio,fSigmaRatio);
+//     scaleorigin = 1.;
     
     while (int(fEvts.size())<nev) {
       ++nattempts;
@@ -1352,8 +1463,10 @@ void MCGBRIntegrator::TrainForest(int ntrees, bool reuseforest) {
       
       
       double genorigin = scaleorigin*target;
-//       gentarget = std::min(exp(targetmin),genorigin);
       gentarget = genorigin;
+      if (fStagedGeneration) {
+        gentarget = std::min(exp(targetmin),genorigin);
+      }
       double realtarget = gentarget;
       
 //       double realtarget = exp(target);
@@ -1367,6 +1480,10 @@ void MCGBRIntegrator::TrainForest(int ntrees, bool reuseforest) {
       sum1 += weight*ratio1;
       sum1sq += weight*ratio1*ratio1;
       
+      double ratio1t = exp(targetmin)/genorigin;
+      sum1t += weight*ratio1t;
+      sum1tsq += weight*ratio1t*ratio1t;
+      
       double funcvaltest = 1.;
       for (int ivar=0; ivar<nvars; ++ivar) {
         tmpvals[ivar] = evalv[ivar];
@@ -1379,6 +1496,16 @@ void MCGBRIntegrator::TrainForest(int ntrees, bool reuseforest) {
       sumctw += weight;
       
       
+      double ratiointer = exp(targetmin)/genorigin;
+      suminter += weight*ratiointer;
+      sumintersq += weight*ratiointer*ratiointer;
+      
+      
+// //       double sigmaratio = (exp(targetmin) - target)/exp(targetmin);
+//       double sigmaratio = (exp(targetmin) - target)/exp(targetmin);
+//       if (std::isnormal(sigmaratio) && sigmaratio>maxsigmaratio) {
+//         maxsigmaratio = sigmaratio;
+//       }
       
 //       double diff1 = (gentarget - target)*forestintegral/target;
 //       sumct += diff1;
@@ -1465,6 +1592,13 @@ void MCGBRIntegrator::TrainForest(int ntrees, bool reuseforest) {
       funcval = islast ? Camel(fNVars,tmpvals.data()) : Camelrnd(fNVars,tmpvals.data());
 //       funcval = Camel(fNVars,tmpvals.data());
       
+      
+//       double sigmaratio = (exp(targetmin) - target)/exp(targetmin);
+      double sigmaratio = (exp(targetmin) - target)/funcval;
+      if (std::isnormal(sigmaratio) && sigmaratio>maxsigmaratio) {
+        maxsigmaratio = sigmaratio;
+      }      
+      
       double ratio2 = funcval/gentarget;
 //       double funcvalmod = funcval > 100. ? std::min(funcval,1000.) - 100. : 0.;
 //       double ratio2 = funcvalmod/gentarget;
@@ -1473,6 +1607,13 @@ void MCGBRIntegrator::TrainForest(int ntrees, bool reuseforest) {
       sum2 += weight*ratio2;
       sum2sq += weight*ratio2*ratio2;
       
+      weightv.push_back(weight*ratio2);
+      
+      double weight2t = exp(targetmin)/gentarget;
+      double ratio2t = funcval/exp(targetmin);
+      sumw2t += weight2t;
+      sum2t += weight2t*ratio2t;
+      sum2tsq += weight2t*ratio2t*ratio2t;
       
 //       double ratioct = forestintegral*funcval/target;
 //       sumct += ratioct;
@@ -1503,9 +1644,10 @@ void MCGBRIntegrator::TrainForest(int ntrees, bool reuseforest) {
       evt.SetFuncVal(funcval);
       sumabsw += std::abs(evt.Weight());  
       
+      evt.SetFuncValAlt(vdt::fast_log(funcval));
 //       double logsigma = log(funcval) + 1.*gRandom->Gaus();
 //       evt.SetFuncValAlt(exp(logsigma));
-      evt.SetFuncValAlt(exp(0.1*gRandom->Gaus()));
+//       evt.SetFuncValAlt(exp(0.1*gRandom->Gaus()));
 
       
 //       double fullweight = (1./totvolume)/genpdf;
@@ -1565,18 +1707,41 @@ void MCGBRIntegrator::TrainForest(int ntrees, bool reuseforest) {
     
     double wavg1 = sum1/sumw1;
     double sigmaw1 = sqrt(sum1sq/sumw1 - wavg1*wavg1);
+    double sigmarel1 = sigmaw1/wavg1;
+    
+    double wavg1t = sum1t/sumw1;
+    double sigmaw1t = sqrt(sum1tsq/sumw1 - wavg1t*wavg1t);
+//     double sigmarel1t = sigmaw1t/wavg1t;
     
     double wavg2 = sum2/sumw2;
     double sigmaw2 = sqrt(sum2sq/sumw2 - wavg2*wavg2);
+    double sigmarel2 = sigmaw2/wavg2;
     
     double integral1 = scaleorigin*forestintegral;
     double integral2 = integral1*wavg1;
 //     integral2now = integral2;
     double integralfunc = integral2*wavg2;
     double sigmaintegral2 = integral1*sigmaw1/sqrt(sumw1);
-    double sigmaintegralfunc = integral2*sigmaw2/sqrt(sumw2);
+    double sigmaintegralfuncpart = integral2*sigmaw2/sqrt(sumw2);
     
-
+    double sigmaintegralfunc = sqrt(pow(sigmaintegralfuncpart/integralfunc,2)+pow(sigmaintegral2/integral2,2))*integralfunc;
+    
+    double wavg2t = sum2t/sumw2t;
+    double sigmaw2t = sqrt(sum2tsq/sumw2t - wavg2t*wavg2t);
+    double sigmarel2t = sigmaw2t/wavg2t;
+    
+    double integral2t = integral1*wavg1t;
+    double sigmaintegral2t = integral1*sigmaw1t/sqrt(sumw1);
+    
+    double wavginter = suminter/sumw1;
+    double sigmawinter = sqrt(sumintersq/sumw1 - wavginter*wavginter);
+    double sigmarelinter = sigmawinter/wavginter;
+    
+    fSigmaRatio = sigmarel1/sigmarel2t;
+    fIntegralRatio = integral2/forestintegral;
+    
+//     fSigmaScale = 1./(1-std::min(forestintegral/integral2t,shrinkagefactor));
+    fSigmaScale = std::max(1.,std::min(1./maxsigmaratio,1./(1.-shrinkagefactor)));
     
 //     fSigmaScale = 1./(1.-std::min(forestintegral/integralfunc,shrinkagefactor));
     
@@ -1595,8 +1760,8 @@ void MCGBRIntegrator::TrainForest(int ntrees, bool reuseforest) {
     double sigmawct = sqrt(sumctsq/sumctw - wavgct*wavgct);
     double sigmarelct = sigmawct/wavgct;
     
-    integralfunc = wavgct;
-    sigmaintegralfunc = sigmawct/sqrt(sumctw);
+//     integralfunc = wavgct;
+//     sigmaintegralfunc = sigmawct/sqrt(sumctw);
     
     double weightfull = 1./sigmaintegralfunc/sigmaintegralfunc;
     sumfull += weightfull*integralfunc;
@@ -1606,15 +1771,39 @@ void MCGBRIntegrator::TrainForest(int ntrees, bool reuseforest) {
 //     double sigmawfull = sqrt(sumfullsq/sumfullw - wavgfull*wavgfull);
     double sigmafull = sqrt(sumfullw)/sumfullw;
     
+    double sigmarelequiv = sqrt(sigmarel2*sigmarel2 + sigmarel1*sigmarel1/scaleorigin/scaleorigin);
+    
 //     double wavgfull = sumfull/sumfullw;
 //     double sigmawfull = sqrt(sumfullsq/sumfullw - wavgfull*wavgfull);
 //     double sigmafull = sigmawfull/sqrt(sumfullw);
     
-    fSigmaScale = 1./(1.-std::min(forestintegral/wavgfull,shrinkagefactor));
     
+//     fSigmaScale = 1./(1.-std::min(forestintegral/wavgfull,shrinkagefactor));
+    
+    const double epsilon = 5e-4;
+    std::sort(weightv.begin(), weightv.end(), std::greater<double>());
+    double maxwthres = epsilon*sum2;
+    double runningsum2 = 0.;
+    double maxweightepsilon = 0.;
+    for (double weight : weightv) {
+      runningsum2 += weight;
+      if (runningsum2 >= maxwthres) {
+        maxweightepsilon = weight;
+        break;
+      }
+    }
+    
+    double effepsilon = sum2/sumw2/maxweightepsilon;
+    
+    
+//     if (0) {
+    printf("integral2t = %5e +- %5e, maxsigmaratio = %5f, fSigmaScale = %5f\n",integral2t,sigmaintegral2t,maxsigmaratio,fSigmaScale);
+//     double sigmascale = 1./
+//     }
 //     printf("sumct = %5f, sumctw = %5f\n",sumct,sumctw);
-    printf("sigmarelct = %5f\n",sigmarelct);
-    printf("testgeneff = %5f, wavg1 = %5f, wavg2 = %5f, sigmaw1 = %5f, sigmarel1 = %5f, sigmaw2 = %5f, sigmarel2 = %5f, integral2 = %5f +- %5f, integralfunc = %5f +- %5f, integralfull = %5f +- %5f\n",double(ngen)/double(nattempts),wavg1, wavg2, sigmaw1,sigmaw1/wavg1, sigmaw2, sigmaw2/wavg2, integral2, sigmaintegral2,integralfunc, sigmaintegralfunc, wavgfull, sigmafull);
+    printf("sigmarelct = %5f, sigmarel2t = %5f, sigmarelinter = %5f, sigmarelequiv = %5f, maxweightepsilon = %5f, effepsilon = %5f\n", sigmarelct,sigmarel2t,sigmarelinter, sigmarelequiv, maxweightepsilon,effepsilon);
+    printf("testgeneff = %5f, wavg1 = %5f, wavg2 = %5f, sigmaw1 = %5f, sigmarel1 = %5f, sigmaw2 = %5f, sigmarel2 = %5f, integral2 = %5f +- %5f, integralfunc = %5f +- %5f, integralfull = %5f +- %5f\n",double(ngen)/double(nattempts),wavg1, wavg2, sigmaw1,sigmarel1, sigmaw2, sigmarel2, integral2, sigmaintegral2,integralfunc, sigmaintegralfunc, wavgfull, sigmafull);
+    printf("numevents = %i\n",int(fEvts.size()));
     
 //     printf("testgeneff = %5f, wavg = %5f, sigmaw = %5f, sigmarel = %5f, integral = %5f += %5f\n",double(ngen)/double(nattempts),wavg,sigmaw,sigmaw/wavg,integralnow, integralerrnow);
 //     printf("testgeneff = %5f\n",double(nev)/double(nattempts));
@@ -1761,15 +1950,26 @@ void MCGBRIntegrator::TrainForest(int ntrees, bool reuseforest) {
     if (numtrees==ntrees) break;
     
     
-    if (0 && numtrees<ntrees/2) {
-//     if (0) {
+//     if (numtrees<ntrees/2) {
+    if (0) {
 //       const double decayrate = 0.9;
 //       const double decayrate = pow(integral/forestintegral,0.5*fShrinkage);
 //       const double decayrate = integral/forestintegral;
 //       double decayrate = pow(1. - lasttreeintegral/forestintegral,0.95);
-      double decayrate = 1.-fShrinkage/100.;
+//       double decayrate = fShrinkage;
+//       double newforestintegral = forestintegral - (1.-fShrinkage)*treeintegral;
+//       newforestintegral = std::min(newforestintegral,0.9*wavgfull);
+//       double decayrate  = std::max(0.5*treeintegral/forestintegral,0.5);
+//       double oldforestintegral = forestintegral-treeintegral;
+//       double newforestintegral = forestintegral - 0.5*treeintegral;
+//       double newforestintegral = forestintegral - 2.*std::max(0.,forestintegral-wavgfull);
+//       double decayrate = newforestintegral/forestintegral;
+//       double decayrate = std::min((1.-fShrinkage)*integral2t/forestintegral,1.);
+//       double decayrate = forestintegral > (1.+0.5*fShrinkage)*integral2t ? (1.-fShrinkage)*integral2t/forestintegral : 1.;
+      double decayrate  = std::min(1.,pow(integral2t/forestintegral,2.));
+//       double decayrate =  0.96;
 //       decayrate = 0.5;
-      printf("decaying responses\n");
+      printf("decaying responses, decayrate = %5f\n",decayrate);
       for (unsigned int iev=0; iev<fEvts.size(); ++iev) {
         fEvts[iev]->SetTarget(decayrate*fEvts[iev]->Target());
 //         fEvts[iev]->SetTargetMin(decayrate*fEvts[iev]->TargetMin());
@@ -1793,11 +1993,53 @@ void MCGBRIntegrator::TrainForest(int ntrees, bool reuseforest) {
       
       fForestIntegralNow = forestintegral;
     }
+    
+    if (0) {
+//       const double decayrate = 0.9;
+//       const double decayrate = pow(integral/forestintegral,0.5*fShrinkage);
+//       const double decayrate = integral/forestintegral;
+//       double decayrate = pow(1. - lasttreeintegral/forestintegral,0.95);
+//       double decayrate = fShrinkage;
+//       double newforestintegral = forestintegral - (1.-fShrinkage)*treeintegral;
+//       newforestintegral = std::min(newforestintegral,0.9*wavgfull);
+//       double decayrate  = std::max(0.5*treeintegral/forestintegral,0.5);
+//       double oldforestintegral = forestintegral-treeintegral;
+//       double newforestintegral = forestintegral - 0.5*treeintegral;
+//       double newforestintegral = forestintegral - 2.*std::max(0.,forestintegral-wavgfull);
+//       double decayrate = newforestintegral/forestintegral;
+      double decayrate =  0.99;
+      double initresponse = fForestGen->InitialResponse();
+      double diffresponse = (decayrate-1.)*initresponse;
+//       decayrate = 0.5;
+      printf("decaying init responses\n");
+      for (unsigned int iev=0; iev<fEvts.size(); ++iev) {
+        fEvts[iev]->SetTarget(fEvts[iev]->Target()+diffresponse);
+//         fEvts[iev]->SetTargetMin(decayrate*fEvts[iev]->TargetMin());
+      }
+      sumposprob += diffresponse;
+      forestintegral += diffresponse;
+//       shrinkagefactor *= decayrate;
+      fForestGen->SetInitialResponse(decayrate*fForestGen->InitialResponse());
+      for (unsigned int iel=0; iel<posprobboundstrees.size(); ++iel) {
+        posprobboundstrees[iel] += diffresponse;
+      }
+      for (unsigned int iel=0; iel<posprobboundsnodes.size(); ++iel) {
+        posprobboundsnodes[iel] += diffresponse;
+      }
+      
+      fForestIntegralNow = forestintegral;
+    }
 //     else {
 //       fMinEvents=1000;
 //     }
 //     if (numtrees>=150) {
 //       fMinEvents=1000;
+//     }
+    
+//     bool startenvelope = (numtrees == ntrees/2);
+//     if (startenvelope) {
+//       fMinEvents = 10e3;
+// //       fDoEnvelope = true;
 //     }
     
     bool restartgen = (numtrees == ntrees/2);
@@ -2015,8 +2257,8 @@ void MCGBRIntegrator::TrainForest(int ntrees, bool reuseforest) {
   
   gStyle->SetOptStat(111111);
   
-//   new TCanvas;
-//   hevts->Draw("E");
+  new TCanvas;
+  hevts->Draw("E");
   
 //   new TCanvas;
 //   hevtstw->Draw("E");
@@ -2040,7 +2282,7 @@ void MCGBRIntegrator::TrainForest(int ntrees, bool reuseforest) {
   htgtpullrel->GetXaxis()->SetTitle("ln(funcval) - target");
   htgtpullrel->GetYaxis()->SetTitle("number of events");  
   
-  htgtratiobase->GetXaxis()->SetTitle("weight");
+  htgtratiobase->GetXaxis()->SetTitle("Primary weight e^{h(#bar{x})}/f(#bar{x})");
   htgtratiobase->GetYaxis()->SetTitle("number of events");
   
   TCanvas *cratiobase = new TCanvas;
@@ -2050,14 +2292,25 @@ void MCGBRIntegrator::TrainForest(int ntrees, bool reuseforest) {
   cratiobase->SetLogy();
   cratiobase->SaveAs("ratiobaselog.pdf");
   
-  new TCanvas;
+  TCanvas *cratiointer = new TCanvas;
   htgtratiointer->Draw("E");    
+  htgtratiointer->GetXaxis()->SetTitle("Intermediate weight e^{h(#bar{x})}/g(#bar{x})");
+  htgtratiointer->GetYaxis()->SetTitle("number of events");
+  cratiointer->SaveAs("ratiointer.pdf");
+  cratiointer->SetLogy();
+  cratiointer->SaveAs("ratiointerlog.pdf");
   
   new TCanvas;
   htgtdiffinter->Draw("E"); 
 
-  new TCanvas;
-  htgtratiointerfull->Draw("E");    
+  TCanvas *cratiointerfull = new TCanvas;
+  htgtratiointerfull->Draw("E");
+  htgtratiointerfull->GetXaxis()->SetTitle("Secondary weight f(#bar{x})/g(#bar{x})");
+  htgtratiointerfull->GetYaxis()->SetTitle("number of events");
+  cratiointerfull->SaveAs("ratiointerfull.pdf");
+  cratiointerfull->SetLogy();
+  cratiointerfull->SaveAs("ratiointerfulllog.pdf");
+    
   
   new TCanvas;
   htgtdiffinterfull->Draw("E");   
@@ -2119,9 +2372,13 @@ void MCGBRIntegrator::TrainForest(int ntrees, bool reuseforest) {
 void MCGBRIntegrator::TrainTree(const std::vector<MCGBREvent*> &evts, double sumwtotal, MCGBRTreeD &tree, int depth, const std::vector<std::pair<float,float> > limits, bool usetarget, bool doenv) {
     
   
-//   int minevents = doenv ? 100 : fMinEvents;
+//   int minevents = doenv ? 10 : fMinEvents;
+//   int minevents = doenv ? fMinEvents : std::max(10,int(fEvts.size()/100));
+//   int minevents = fForestGen->Trees().size() > 10 ? std::max(fMinEvents,int(fEvts.size()/1e3)) : fMinEvents;
   int minevents = fMinEvents;
   double mincutsig = fMinCutSignificance;
+//   int maxnodes = fForestGen->Trees().size() > 10 ? 2000 : fMaxNodes;
+  int maxnodes = fMaxNodes;
 //   double mincutsig = doenv ? 1e4*fMinCutSignificance : fMinCutSignificance;
 //   double mincutsig = doenv ? 1e-6 : fMinCutSignificance;
 
@@ -2160,6 +2417,10 @@ void MCGBRIntegrator::TrainTree(const std::vector<MCGBREvent*> &evts, double sum
    
 //   const double kenv = 0.1;
   
+//   constexpr double sigma = 0.01;
+//   constexpr double k = 0.5/sigma/sigma;
+//   constexpr double kenv = 100.;
+  
 //   double fulltgtmax = std::numeric_limits<double>::lowest();
 //   for (int iev = 0; iev<nev; ++iev) {
 //     double tgtval = evts[iev]->FuncVal() - evts[iev]->Target();
@@ -2169,335 +2430,409 @@ void MCGBRIntegrator::TrainTree(const std::vector<MCGBREvent*> &evts, double sum
 //   }
 //    const double k = 200;
 //   double tgtmax = std::numeric_limits<double>::lowest();
+
+
+//   double sigmaratiomax = std::numeric_limits<double>::lowest();
+
+  if (doenv) {
+// #pragma omp parallel for
+    for (int iev = 0; iev<nev; ++iev) {
+      const double weight = 1.;
+      const double arg = evts[iev]->Arg();
+      const double tgtval = -arg;
+      const double tgt2val = 1.;
+      
+      _weightvals[iev] = weight;
+      _tgtvals[iev] = tgtval;
+      _tgt2vals[iev] = tgt2val;
+      
+      for (int ivar=0; ivar<nvars; ++ivar) {
+        _quants[ivar][iev] = evts[iev]->Quantile(ivar);
+      }
+    }
+  }
+  else {
+// #pragma omp parallel for
+    for (int iev = 0; iev<nev; ++iev) {
+      const double weight = 1.;
+      const double arg = evts[iev]->ArgLog();
+      const double tgtval = -arg;
+      const double tgt2val = 1.;
+      
+      _weightvals[iev] = weight;
+      _tgtvals[iev] = tgtval;
+      _tgt2vals[iev] = tgt2val;
+      
+      for (int ivar=0; ivar<nvars; ++ivar) {
+        _quants[ivar][iev] = evts[iev]->Quantile(ivar);
+      }      
+    }
+  }
+
   //printf("first parallel loop\n");
   //printf("nev = %i\n",nev);
   //fill temporary array of quantiles (to allow auto-vectorization of later loops)
-  #pragma omp parallel for
-  for (int iev = 0; iev<nev; ++iev) {
-//     _tgtvals[iev] = evts[iev]->Weight()*evts[iev]->FuncVal();
-    double weight = evts[iev]->Weight();
-    double funcval = evts[iev]->FuncVal();
-    double target = evts[iev]->Target();
-    double targetmin = evts[iev]->TargetMin(); 
-//     double funcvalalt = evts[iev]->FuncValAlt();
-//     double tgtval = usetarget ? evts[iev]->FuncVal() - evts[iev]->Target() : evts[iev]->FuncVal();
-//     double tgtval = evts[iev]->FuncVal();
-//     double tgtval = evts[iev]->FuncVal() - evts[iev]->Target();
-    
-    
-//     double tgtval = doenv ? exp(targetmin) - target : log(funcval) - targetmin;
-    
-//     double tgtval = doenv ? NLSkewGausDMu(exp(targetmin),target,doenv) : log(funcval) - targetmin;
-//     double tgt2val = doenv ? NLSkewGausD2Mu(exp(targetmin),target,doenv ) : 0.;
-   
-//     double tgtval = doenv ? NLSkewGausDMu(funcval,target,doenv) : NLSkewGausDMu(log(funcval),targetmin,doenv);
-//     double tgt2val = doenv ? NLSkewGausD2Mu(funcval,target,doenv ) : NLSkewGausD2Mu(log(funcval),targetmin,doenv);
-    
-    
-//     double tgtval = doenv ? NLSkewGausDMu(exp(targetmin),target,funcval,doenv) : NLSkewGausDMu(log(funcval),targetmin,funcval,doenv);
-//     double tgt2val = doenv ? NLSkewGausD2Mu(exp(targetmin),target,funcval,doenv ) : NLSkewGausD2Mu(log(funcval),targetmin,funcval,doenv);
-    
-//     double tgtval = doenv ? NLLogNormDMu(exp(targetmin),target,exp(targetmin)-funcval) : NLNormDMu(log(funcval),targetmin);
-//     double tgt2val = doenv ? NLLogNormD2Mu(exp(targetmin),target,exp(targetmin)-funcval) : NLNormD2Mu(log(funcval),targetmin);
-    
-//     double tgtval = doenv ? NLLogNormDMu(exp(targetmin),target,funcvalalt) : NLNormDMu(log(funcval),targetmin);
-//     double tgt2val = doenv ? NLLogNormD2Mu(exp(targetmin),target,funcvalalt) : NLNormD2Mu(log(funcval),targetmin);
-    
-//     double tgtval = doenv ? targetmin : NLNormDMu(log(funcval),targetmin);
-//     double tgt2val = doenv ? 0. : NLNormD2Mu(log(funcval),targetmin);
-    
-//     double tgtval = doenv ?  NLNormDMu(targetmin,0.) : NLNormDMu(log(funcval),targetmin);
-//     double tgt2val = doenv ? NLNormD2Mu(targetmin,0.) : NLNormD2Mu(log(funcval),targetmin);
-    
-//     double tgtval = doenv ?  NLLogNormDMu(exp(targetmin),target) : NLNormDMu(log(funcval),targetmin);
-//     double tgt2val = doenv ? NLLogNormD2Mu(exp(targetmin),target) : NLNormD2Mu(log(funcval),targetmin);
-    
-//     double tgtval = doenv ?  NLNormDMu(targetmin,0.) : NLNormDMu(log(funcval),targetmin);
-//     double tgt2val = doenv ? NLNormD2Mu(targetmin,0.) : NLNormD2Mu(log(funcval),targetmin);
-    
-//     double tgtval = doenv ?  NLNormDMu(log(std::max(1e-6,exp(targetmin)-target)),0.) : NLNormDMu(log(funcval),targetmin);
-//     double tgt2val = doenv ? NLNormD2Mu(log(std::max(1e-6,exp(targetmin)-target)),0.) : NLNormD2Mu(log(funcval),targetmin);
-    
-    double sigma = doenv ? 0.01 : 0.01;
-    double tgtval = doenv ?  NLNormDMu(log(std::max(exp(-24.),exp(targetmin)-target)),0.,sigma) : NLNormDMu(log(funcval),targetmin,sigma);
-    double tgt2val = doenv ? NLNormD2Mu(log(std::max(exp(-24.),exp(targetmin)-target)),0.,sigma) : NLNormD2Mu(log(funcval),targetmin,sigma);
-    
-//     double tgtval = doenv ? exp(targetmin) : NLNormDMu(log(funcval),targetmin);
-//     double tgt2val = doenv ? exp(2.*targetmin) : NLNormD2Mu(log(funcval),targetmin);
-    
-//     double tgtval = doenv ? NLNormDMu(targetmin,target) : NLNormDMu(log(funcval),targetmin);
-//     double tgt2val = doenv ? NLNormD2Mu(targetmin,target) : NLNormD2Mu(log(funcval),targetmin);
-    
-//     double tgtval = doenv ? NLNormDMu(exp(targetmin),target) : NLNormDMu(log(funcval),targetmin);
-//     double tgt2val = doenv ? NLNormD2Mu(exp(targetmin),target) : NLNormD2Mu(log(funcval),targetmin);
-    
-//     double tgtval = doenv ? NLSkewGausDMu(funcval,target,exp(targetmin),doenv) : NLSkewGausDMu(log(funcval),targetmin,funcval,doenv);
-//     double tgt2val = doenv ? NLSkewGausD2Mu(funcval,target,exp(targetmin),doenv ) : NLSkewGausD2Mu(log(funcval),targetmin,funcval,doenv);
-    
-/*    double tgtval = doenv ? NLSkewGausDMu(funcval,target) : log(funcval) - targetmin;
-    double tgt2val = doenv ? NLSkewGausD2Mu(funcval,target) : 0.;  */  
-    
-    
-//     double tgtval = pow(funcval,0.8) - target;
-
-//     double tgtval = pow(funcval/510.,0.9)*510. - target;
-    
-//        double tgt2val = 1./(funcval*funcval);
-//        double tgt2val = std::min(1e3,1./(funcval*funcval));
-//        double tgt2val = funcval;
-//        double tgt2val = 1.;
-//        double tgtval = (funcval-target)*tgt2val;
-    
-//     double x = log(funcval);
-//     double h = targetmin;
-//     double erfexpr = 1./Faddeeva::erfcx(k2*(x-h));
-    
-//     double tgtval = -2.*k1*k1*(x-h) - 2.*k2*erfexpr/sqrt(M_PI);
-//     double tgt2val = 2.*k1*k1 - 4.*k2*k2*k2*(x-h)*erfexpr/sqrt(M_PI) + 4.*k2*k2*erfexpr*erfexpr/M_PI;    
-    
-//     double expF = vdt::fast_exp(targetmin);
-//     double tgtval = target;
-//     double tgt2val = expF;
-//     double tgt3val = funcval/expF;
-//     double tgt4val = log(funcval) - targetmin;
-    
-//     _weightvals[iev] = weight;
-//     _tgtvals[iev] = weight*tgtval;
-//     _tgt2vals[iev] = weight*tgt2val;  
-//     _tgt3vals[iev] = weight*tgt3val;
-//     _tgt4vals[iev] = weight*tgt4val;  
-    
-    
-//     double tgtval = funcval - target;
-//     double tgt2val = funcval*vdt::fast_exp(-targetmin);
-//     double tgt3val = vdt::fast_exp(-targetmin);
-//     double tgt4val = (funcval-target)*vdt::fast_exp(-targetmin);
-//     double tgt5val = log(funcval) - targetmin;
-
-//     double tgtval = funcval - target;
-//     double fulltgt2 = (target + fulltgtmax)*(target + fulltgtmax);
-//     double tgtval = funcval/fulltgt2;
-//     double tgt2val = funcval - target;
-    
-//     double h = target;
-//     double f = target;
-//     double x = funcval;
-    
-//     double tgtval = 1./h - (exp(k*(-1. + x/h))*k*x)/((1. + exp(k*(-1. + x/h)))*h*h);
-//     double tgt2val = 1./h/h + (2.*exp(k*(-1. + x/h))*k*x)/((1. + exp(k*(-1. + x/h)))*h*h*h) - (exp(2.*k*(-1. + x/h))*k*k*x*x)/(pow((1. + exp(k*(-1. + x/h))),2)*h*h*h*h) + (exp(k*(-1. + x/h))*k*k*x*x)/((1. + exp(k*(-1. + x/h)))*h*h*h*h);
-    
-/*    double tgtval = 1./h - (k*x)/((1. + exp(-k*(-1. + x/h)))*h*h);
-    double tgt2val = 1./h/h + (2.*k*x)/((1. + exp(-k*(-1. + x/h)))*h*h*h) - (k*k*x*x)/(pow((1. + exp(-k*(-1. + x/h))),2)*h*h*h*h) + (k*k*x*x)/((1. + exp(-k*(-1. + x/h)))*h*h*h*h); */      
-    
-//     double expexpr = 1./(1.+exp(-k*(-1. + x/h)));
-//     double tgtval = 1./h - (k*x)*expexpr/(h*h);
-//     double tgt2val = 1./h/h + (2.*k*x)*expexpr/(h*h*h) - (k*k*x*x)*expexpr*expexpr/(h*h*h*h) + (k*k*x*x)*expexpr/(h*h*h*h);     
-   
-//     double arg = k*(x/h-1.);
-//     double expnarg2 = exp(-arg*arg);
-//     double den = 1./(sqrt(M_PI)*(1.-erf(arg)));
-//     double hinv = 1./h;
+//   #pragma omp parallel for
+//   for (int iev = 0; iev<nev; ++iev) {
+// //     _tgtvals[iev] = evts[iev]->Weight()*evts[iev]->FuncVal();
+//     double weight = evts[iev]->Weight();
+//     double funcval = evts[iev]->FuncVal();
+//     double target = evts[iev]->Target();
+//     double targetmin = evts[iev]->TargetMin(); 
+// //     double funcvalalt = evts[iev]->FuncValAlt();
+// //     double tgtval = usetarget ? evts[iev]->FuncVal() - evts[iev]->Target() : evts[iev]->FuncVal();
+// //     double tgtval = evts[iev]->FuncVal();
+// //     double tgtval = evts[iev]->FuncVal() - evts[iev]->Target();
 //     
-//     double tgtval = hinv - 2.*k*x*expnarg2*den*hinv*hinv;
-//     double tgt2val = 4*k*k*x*x*expnarg2*den*den*hinv*hinv*hinv*hinv - 4*k*k*k*x*x*(x*hinv-1.)*expnarg2*den*hinv*hinv*hinv*hinv + 4.*k*x*expnarg2*den*hinv*hinv*hinv - hinv*hinv;
-   
-//     printf("tgtval = %5f, tgt2val = %5f\n",tgtval,tgt2val);
-    
-/*    double expexpr = 1./(1. + exp(-k*(f*x-1)));
-    double finv = 1./f;
-    double tgtval = -finv + k*x*expexpr;
-    double tgt2val = finv*finv + k*k*x*x*expexpr - k*k*x*x*expexpr*expexpr; */   
-    
-
-//     double tgtval = 1./target;
-//     double tgt2val = tgtval*tgtval;
-//     double tgt3val = tgt2val*tgtval;
-//     double tgt4val = tgt3val*tgtval;
-//     double tgt5val = funcval - target;
+//     
+// //     double tgtval = doenv ? exp(targetmin) - target : log(funcval) - targetmin;
+//     
+// //     double tgtval = doenv ? NLSkewGausDMu(exp(targetmin),target,doenv) : log(funcval) - targetmin;
+// //     double tgt2val = doenv ? NLSkewGausD2Mu(exp(targetmin),target,doenv ) : 0.;
+//    
+// //     double tgtval = doenv ? NLSkewGausDMu(funcval,target,doenv) : NLSkewGausDMu(log(funcval),targetmin,doenv);
+// //     double tgt2val = doenv ? NLSkewGausD2Mu(funcval,target,doenv ) : NLSkewGausD2Mu(log(funcval),targetmin,doenv);
+//     
+//     
+// //     double tgtval = doenv ? NLSkewGausDMu(exp(targetmin),target,funcval,doenv) : NLSkewGausDMu(log(funcval),targetmin,funcval,doenv);
+// //     double tgt2val = doenv ? NLSkewGausD2Mu(exp(targetmin),target,funcval,doenv ) : NLSkewGausD2Mu(log(funcval),targetmin,funcval,doenv);
+//     
+// //     double tgtval = doenv ? NLLogNormDMu(exp(targetmin),target,exp(targetmin)-funcval) : NLNormDMu(log(funcval),targetmin);
+// //     double tgt2val = doenv ? NLLogNormD2Mu(exp(targetmin),target,exp(targetmin)-funcval) : NLNormD2Mu(log(funcval),targetmin);
+//     
+// //     double tgtval = doenv ? NLLogNormDMu(exp(targetmin),target,funcvalalt) : NLNormDMu(log(funcval),targetmin);
+// //     double tgt2val = doenv ? NLLogNormD2Mu(exp(targetmin),target,funcvalalt) : NLNormD2Mu(log(funcval),targetmin);
+//     
+// //     double tgtval = doenv ? targetmin : NLNormDMu(log(funcval),targetmin);
+// //     double tgt2val = doenv ? 0. : NLNormD2Mu(log(funcval),targetmin);
+//     
+// //     double tgtval = doenv ?  NLNormDMu(targetmin,0.) : NLNormDMu(log(funcval),targetmin);
+// //     double tgt2val = doenv ? NLNormD2Mu(targetmin,0.) : NLNormD2Mu(log(funcval),targetmin);
+//     
+// //     double tgtval = doenv ?  NLLogNormDMu(exp(targetmin),target) : NLNormDMu(log(funcval),targetmin);
+// //     double tgt2val = doenv ? NLLogNormD2Mu(exp(targetmin),target) : NLNormD2Mu(log(funcval),targetmin);
+//     
+// //     double tgtval = doenv ?  NLNormDMu(targetmin,0.) : NLNormDMu(log(funcval),targetmin);
+// //     double tgt2val = doenv ? NLNormD2Mu(targetmin,0.) : NLNormD2Mu(log(funcval),targetmin);
+//     
+// //     double tgtval = doenv ?  NLNormDMu(log(std::max(1e-6,exp(targetmin)-target)),0.) : NLNormDMu(log(funcval),targetmin);
+// //     double tgt2val = doenv ? NLNormD2Mu(log(std::max(1e-6,exp(targetmin)-target)),0.) : NLNormD2Mu(log(funcval),targetmin);
+//     
+// //     double sigma = doenv ? 0.01 : 0.01;
+// //     double tgtval = doenv ?  NLNormDMu(log(std::max(exp(-24.),exp(targetmin)-target)),0.,sigma) : NLNormDMu(log(funcval),targetmin,sigma);
+// //     double tgt2val = doenv ? NLNormD2Mu(log(std::max(exp(-24.),exp(targetmin)-target)),0.,sigma) : NLNormD2Mu(log(funcval),targetmin,sigma);
+// //      double tgtval = doenv ? log(std::max(exp(-24.),exp(targetmin)-target)) : log(funcval) - targetmin;
+// 
+// //     double tgtval = doenv ? log(std::max(exp(-24.),exp(targetmin)-target)) : (fDoEnvelope ? NLSkewGausDMu(log(funcval),targetmin) : log(funcval) - targetmin);
+// //     double tgt2val = doenv ? 0. : (fDoEnvelope ? NLSkewGausD2Mu(log(funcval),targetmin) : 0.);
+//     
+//     double px = doenv ? log(std::max(exp(-128.),exp(targetmin)-target)) : log(funcval);
+//     double pmu = doenv ? 0. : targetmin;
+// //     double sigmabase = 0.05;
+// //     double psigma = doenv ? 1. : 0.3;
+// //     double psigma = sigmabase;
+//     double psigma = 0.05;
+//     double tgtval = fDoEnvelope && !doenv ? NLSkewGausDMu(px,pmu) : NLNormDMu(px,pmu,psigma);
+//     double tgt2val = fDoEnvelope && !doenv ? NLSkewGausD2Mu(px,pmu) : NLNormD2Mu(px,pmu,psigma);
+//     
+// //     double px = doenv ? log(std::max(exp(-128.),funcval-target)) : log(funcval);
+// //     double pmu = doenv ? 0. : targetmin;
+// //     double sigmabase = 0.05;
+// //     double psigma = sigmabase;
+// //     double tgtval = fDoEnvelope && !doenv ? NLSkewGausDMu(px,pmu) : NLNormDMu(px,pmu,psigma);
+// //     double tgt2val = fDoEnvelope && !doenv ? NLSkewGausD2Mu(px,pmu) : NLNormD2Mu(px,pmu,psigma);
+//     
+// //     double sigmaratio = doenv ? (exp(targetmin)-target)/exp(targetmin) : 0.;
+// //     
+// //     if (sigmaratio>sigmaratiomax) {
+// //       sigmaratiomax = sigmaratio;
+// //     }
+//     
+// //     double tgtval = doenv ? exp(targetmin) : NLNormDMu(log(funcval),targetmin);
+// //     double tgt2val = doenv ? exp(2.*targetmin) : NLNormD2Mu(log(funcval),targetmin);
+//     
+// //     double tgtval = doenv ? NLNormDMu(targetmin,target) : NLNormDMu(log(funcval),targetmin);
+// //     double tgt2val = doenv ? NLNormD2Mu(targetmin,target) : NLNormD2Mu(log(funcval),targetmin);
+//     
+// //     double tgtval = doenv ? NLNormDMu(exp(targetmin),target) : NLNormDMu(log(funcval),targetmin);
+// //     double tgt2val = doenv ? NLNormD2Mu(exp(targetmin),target) : NLNormD2Mu(log(funcval),targetmin);
+//     
+// //     double tgtval = doenv ? NLSkewGausDMu(funcval,target,exp(targetmin),doenv) : NLSkewGausDMu(log(funcval),targetmin,funcval,doenv);
+// //     double tgt2val = doenv ? NLSkewGausD2Mu(funcval,target,exp(targetmin),doenv ) : NLSkewGausD2Mu(log(funcval),targetmin,funcval,doenv);
+//     
+// /*    double tgtval = doenv ? NLSkewGausDMu(funcval,target) : log(funcval) - targetmin;
+//     double tgt2val = doenv ? NLSkewGausD2Mu(funcval,target) : 0.;  */  
+//     
+//     
+// //     double tgtval = pow(funcval,0.8) - target;
+// 
+// //     double tgtval = pow(funcval/510.,0.9)*510. - target;
+//     
+// //        double tgt2val = 1./(funcval*funcval);
+// //        double tgt2val = std::min(1e3,1./(funcval*funcval));
+// //        double tgt2val = funcval;
+// //        double tgt2val = 1.;
+// //        double tgtval = (funcval-target)*tgt2val;
+//     
+// //     double x = log(funcval);
+// //     double h = targetmin;
+// //     double erfexpr = 1./Faddeeva::erfcx(k2*(x-h));
+//     
+// //     double tgtval = -2.*k1*k1*(x-h) - 2.*k2*erfexpr/sqrt(M_PI);
+// //     double tgt2val = 2.*k1*k1 - 4.*k2*k2*k2*(x-h)*erfexpr/sqrt(M_PI) + 4.*k2*k2*erfexpr*erfexpr/M_PI;    
+//     
+// //     double expF = vdt::fast_exp(targetmin);
+// //     double tgtval = target;
+// //     double tgt2val = expF;
+// //     double tgt3val = funcval/expF;
+// //     double tgt4val = log(funcval) - targetmin;
+//     
+// //     _weightvals[iev] = weight;
+// //     _tgtvals[iev] = weight*tgtval;
+// //     _tgt2vals[iev] = weight*tgt2val;  
+// //     _tgt3vals[iev] = weight*tgt3val;
+// //     _tgt4vals[iev] = weight*tgt4val;  
+//     
+//     
+// //     double tgtval = funcval - target;
+// //     double tgt2val = funcval*vdt::fast_exp(-targetmin);
+// //     double tgt3val = vdt::fast_exp(-targetmin);
+// //     double tgt4val = (funcval-target)*vdt::fast_exp(-targetmin);
+// //     double tgt5val = log(funcval) - targetmin;
+// 
+// //     double tgtval = funcval - target;
+// //     double fulltgt2 = (target + fulltgtmax)*(target + fulltgtmax);
+// //     double tgtval = funcval/fulltgt2;
+// //     double tgt2val = funcval - target;
+//     
+// //     double h = target;
+// //     double f = target;
+// //     double x = funcval;
+//     
+// //     double tgtval = 1./h - (exp(k*(-1. + x/h))*k*x)/((1. + exp(k*(-1. + x/h)))*h*h);
+// //     double tgt2val = 1./h/h + (2.*exp(k*(-1. + x/h))*k*x)/((1. + exp(k*(-1. + x/h)))*h*h*h) - (exp(2.*k*(-1. + x/h))*k*k*x*x)/(pow((1. + exp(k*(-1. + x/h))),2)*h*h*h*h) + (exp(k*(-1. + x/h))*k*k*x*x)/((1. + exp(k*(-1. + x/h)))*h*h*h*h);
+//     
+// /*    double tgtval = 1./h - (k*x)/((1. + exp(-k*(-1. + x/h)))*h*h);
+//     double tgt2val = 1./h/h + (2.*k*x)/((1. + exp(-k*(-1. + x/h)))*h*h*h) - (k*k*x*x)/(pow((1. + exp(-k*(-1. + x/h))),2)*h*h*h*h) + (k*k*x*x)/((1. + exp(-k*(-1. + x/h)))*h*h*h*h); */      
+//     
+// //     double expexpr = 1./(1.+exp(-k*(-1. + x/h)));
+// //     double tgtval = 1./h - (k*x)*expexpr/(h*h);
+// //     double tgt2val = 1./h/h + (2.*k*x)*expexpr/(h*h*h) - (k*k*x*x)*expexpr*expexpr/(h*h*h*h) + (k*k*x*x)*expexpr/(h*h*h*h);     
+//    
+// //     double arg = k*(x/h-1.);
+// //     double expnarg2 = exp(-arg*arg);
+// //     double den = 1./(sqrt(M_PI)*(1.-erf(arg)));
+// //     double hinv = 1./h;
+// //     
+// //     double tgtval = hinv - 2.*k*x*expnarg2*den*hinv*hinv;
+// //     double tgt2val = 4*k*k*x*x*expnarg2*den*den*hinv*hinv*hinv*hinv - 4*k*k*k*x*x*(x*hinv-1.)*expnarg2*den*hinv*hinv*hinv*hinv + 4.*k*x*expnarg2*den*hinv*hinv*hinv - hinv*hinv;
+//    
+// //     printf("tgtval = %5f, tgt2val = %5f\n",tgtval,tgt2val);
+//     
+// /*    double expexpr = 1./(1. + exp(-k*(f*x-1)));
+//     double finv = 1./f;
+//     double tgtval = -finv + k*x*expexpr;
+//     double tgt2val = finv*finv + k*k*x*x*expexpr - k*k*x*x*expexpr*expexpr; */   
+//     
+// 
+// //     double tgtval = 1./target;
+// //     double tgt2val = tgtval*tgtval;
+// //     double tgt3val = tgt2val*tgtval;
+// //     double tgt4val = tgt3val*tgtval;
+// //     double tgt5val = funcval - target;
+// // //     double tgt5val = -funcval + target - targetmin;
+// // 
+// //     _weightvals[iev] = weight;
+// //     _tgtvals[iev] = weight*tgtval;
+// //     _tgt2vals[iev] = weight*tgt2val;
+// //     _tgt3vals[iev] = weight*tgt3val;
+// //     _tgt4vals[iev] = weight*tgt4val;
+// //     _tgt5vals[iev] = weight*tgt5val;
+// 
+// //     double rinv2 = 1./(funcval*funcval);
+// //     double tgtval = funcval - target;
+// //     double tgtval = funcval > 1e-12 ? log(funcval) - log(1.-exp(-1e6*funcval)) - target : -log(1e6) + 0.5*1e6*funcval - target;
+// 
+// 
+// //     double tgtval = 1./target;
+// //     double tgt2val = tgtval*tgtval;
+// //     double tgt3val = tgtval*tgt2val;
+// //     double tgt4val = tgtval*tgt3val;
+// //     double tgtval = funcval - target;
+// //     double tgtval = log(target + fulltgtmax);
+// //     double tgt2val = target;
+// //     double tgt5val = funcval - target;
+// //     double fval = log(funcval) - targetmin;
+//     
+// //     double tgt5val = (1.+k)*funcval - target - k*targetmin;
+// //     double fval = funcval - targetmin;   
+// 
+// //     double tgt5val = log(funcval) - target;
+// //     double tgt5val = funcval - target;
+// 
+// //     double tgt5val = funcval - target + k*targetmin;
+// //     double fval = funcval - target + targetmin + k*targetmin;
+//     
+// //     double tgtval = 1./(funcval*funcval);
+// //     double tgt2val = (funcval - target)*tgtval;
+// //     double tgt3val = tgt2val*tgtval;
+// //     double tgt4val = tgt3val*tgtval;
+// //     double tgt5val = funcval - target;
 // //     double tgt5val = -funcval + target - targetmin;
 // 
-//     _weightvals[iev] = weight;
-//     _tgtvals[iev] = weight*tgtval;
-//     _tgt2vals[iev] = weight*tgt2val;
-//     _tgt3vals[iev] = weight*tgt3val;
-//     _tgt4vals[iev] = weight*tgt4val;
-//     _tgt5vals[iev] = weight*tgt5val;
-
-//     double rinv2 = 1./(funcval*funcval);
-//     double tgtval = funcval - target;
-//     double tgtval = funcval > 1e-12 ? log(funcval) - log(1.-exp(-1e6*funcval)) - target : -log(1e6) + 0.5*1e6*funcval - target;
-
-
-//     double tgtval = 1./target;
-//     double tgt2val = tgtval*tgtval;
-//     double tgt3val = tgtval*tgt2val;
-//     double tgt4val = tgtval*tgt3val;
-//     double tgtval = funcval - target;
-//     double tgtval = log(target + fulltgtmax);
-//     double tgt2val = target;
-//     double tgt5val = funcval - target;
-//     double fval = log(funcval) - targetmin;
-    
-//     double tgt5val = (1.+k)*funcval - target - k*targetmin;
-//     double fval = funcval - targetmin;   
-
-//     double tgt5val = log(funcval) - target;
-//     double tgt5val = funcval - target;
-
-//     double tgt5val = funcval - target + k*targetmin;
-//     double fval = funcval - target + targetmin + k*targetmin;
-    
-//     double tgtval = 1./(funcval*funcval);
-//     double tgt2val = (funcval - target)*tgtval;
-//     double tgt3val = tgt2val*tgtval;
-//     double tgt4val = tgt3val*tgtval;
-//     double tgt5val = funcval - target;
-//     double tgt5val = -funcval + target - targetmin;
-
-//     double r = funcval;
-//     double h = target;
-//     double invh = 1./h;
+// //     double r = funcval;
+// //     double h = target;
+// //     double invh = 1./h;
+// // 
+// //     double tgtval = 2.*k*(log(h)-log(r))*invh;
+// //     double tgt2val = 2.*k*(1. + log(r) - log(h))*invh*invh;
 // 
-//     double tgtval = 2.*k*(log(h)-log(r))*invh;
-//     double tgt2val = 2.*k*(1. + log(r) - log(h))*invh*invh;
-
-//     double tgtval = funcval - target;
-
-/*    double exp2ns = vdt::fast_exp(-2.*targetmin);
-    double diff = funcval - target;
-    double tgtval = exp2ns;
-    double tgt2val = exp2ns*diff;
-    double tgt3val = tgt2val*diff;  */  
-
-//     double tgtval = log(funcval) - targetmin;
-//     double tgt2val = funcval*exp(-targetmin);
-    
-    _weightvals[iev] = weight;
-    _tgtvals[iev] = weight*tgtval;
-    _tgt2vals[iev] = weight*tgt2val;
-//     _tgt3vals[iev] = weight*tgt3val;
-//     _tgt4vals[iev] = weight*tgt4val;
-//     _tgt5vals[iev] = weight*tgt5val;    
-//     _fvals[iev] = fval;
-    
-    
-    
-//     double tgtval = log(funcval) - target;
-//     double tgt2val = funcval*vdt::fast_exp(-target);
-    
-//     double tgtval = 1./targetmin;
-//     double tgt2val = tgtval*tgtval;
-// //     double tgt3val = tgtval*tgt2val;
-//     double tgt4val = tgtval*tgt3val;
-    
-//     double tgt3val = 1./target;
-//     double tgt4val = tgt3val*tgt3val;
-    
-//     double tgt5val = funcval - target;
-//     double fval = funcval - targetmin;
-//     double fval = funcval - target + targetmin;
-    
-//     double expF = vdt::fast_exp(targetmin);
-    
-//     double tgtval = funcval/expF;
-//     double tgt2val = expF;
-//     double tgt3val = target;
-//     double tgt4val = funcval - target;
-    //     double tgt2val = evts[iev]->TargetMin();
-//     double tgt2val = evts[iev]->FuncVal() - evts[iev]->TargetMin();
-    
-    
-//     double expS = vdt::fast_exp(targetmin);
-//     double expnF = vdt::fast_exp(-target);
-//     
-//     double tgtval = funcval*expS*expnF;
-//     double tgt2val = expS;
-//     double tgt3val = log(funcval) - target;
+// //     double tgtval = funcval - target;
+// 
+// /*    double exp2ns = vdt::fast_exp(-2.*targetmin);
+//     double diff = funcval - target;
+//     double tgtval = exp2ns;
+//     double tgt2val = exp2ns*diff;
+//     double tgt3val = tgt2val*diff;  */  
+// 
+// //     double tgtval = log(funcval) - targetmin;
+// //     double tgt2val = funcval*exp(-targetmin);
 //     
 //     _weightvals[iev] = weight;
 //     _tgtvals[iev] = weight*tgtval;
-//     _tgt2vals[iev] = weight*tgt2val;  
-//     _tgt3vals[iev] = weight*tgt3val;
-//     _tgt4vals[iev] = weight*tgt4val;
-    
-//     _tgt5vals[iev] = weight*tgt5val;
-//     _fvals[iev] = weight*fval;
-    
-//     _tgt2vals[iev] = weight*tgtval*tgtval;    
-    
-//     if (tgtval>tgtmax) tgtmax = tgtval;
-    
-//     printf("tgtval = %5f, funcval = %5f, tgt = %5f\n",tgtval,evts[iev]->FuncVal(),evts[iev]->Target());
-    
-//     double funcval = evts[iev]->FuncVal();
-//     double target =  evts[iev]->Target();
-//     double targetmin =  evts[iev]->TargetMin();
-    
-//     double oos = vdt::fast_exp(targetmin);
-//     double oos2 = oos*oos;
-//     double expr = target*oos2-a*oos-funcval*oos2;
-//     double expr2 = 2.*target*oos2-a*oos-2*funcval*oos2;
-    
-//     _weightvals[iev] = weight;
-//     _tgtvals[iev] = weight*expr;
-//     _tgt2vals[iev] = weight*(-1. + (target-funcval)*expr);
-//     _tgt3vals[iev] = weight*oos2;
-//     _tgt4vals[iev] = weight*(target-funcval)*expr2;
-//     _tgt5vals[iev] = weight*expr2;
-    
-    
-//     double r = evts[iev]->FuncVal();
-//     double h =  evts[iev]->Target();
-//     double s =  evts[iev]->TargetMin();    
-    
-//     double rmh = r-h;
-//     double exps = vdt::fast_exp(s);
-//     double exp2s = vdt::fast_exp(2.*s);
-    
-    
-    
-//     _weightvals[iev] = weight;
-//     _tgtvals[iev] = weight*exp2s*rmh;
-//     _tgt2vals[iev] = weight*exp2s;
-//     _tgt3vals[iev] = weight*exp2s*rmh*rmh;
-//     _tgt4vals[iev] = weight*(target-funcval)*expr2;
-//     _tgt5vals[iev] = weight*expr2;    
-    
-    
-    
-//     double r = evts[iev]->FuncVal();
-//     double h =  evts[iev]->Target();
-//     double s =  evts[iev]->TargetMin();    
-//     
-//     double rmh = r-h;
-//     double exps = vdt::fast_exp(s);
-//     double exp2s = exps*exps;
-//     
-//     
-//     
-//     _weightvals[iev] = weight;
-//     _tgtvals[iev] = weight*rmh;
-//     _tgt2vals[iev] = weight*rmh*rmh;
-//     _tgt3vals[iev] = weight*exp2s*rmh*rmh;
-    
-    
-    
-    
-    
 //     _tgt2vals[iev] = weight*tgt2val;
-//     _tgt2vals[iev] = weight*tgtmaxval;
-//     _tgt2vals[iev] = weight*tgtval*tgtval;
-//     _fvals[iev] = evts[iev]->Target();
-    for (int ivar=0; ivar<nvars; ++ivar) {
-      _quants[ivar][iev] = evts[iev]->Quantile(ivar);   
-    }
-  }  
+// //     _tgt3vals[iev] = weight*tgt3val;
+// //     _tgt4vals[iev] = weight*tgt4val;
+// //     _tgt5vals[iev] = weight*tgt5val;    
+// //     _fvals[iev] = fval;
+//     
+//     
+//     
+// //     double tgtval = log(funcval) - target;
+// //     double tgt2val = funcval*vdt::fast_exp(-target);
+//     
+// //     double tgtval = 1./targetmin;
+// //     double tgt2val = tgtval*tgtval;
+// // //     double tgt3val = tgtval*tgt2val;
+// //     double tgt4val = tgtval*tgt3val;
+//     
+// //     double tgt3val = 1./target;
+// //     double tgt4val = tgt3val*tgt3val;
+//     
+// //     double tgt5val = funcval - target;
+// //     double fval = funcval - targetmin;
+// //     double fval = funcval - target + targetmin;
+//     
+// //     double expF = vdt::fast_exp(targetmin);
+//     
+// //     double tgtval = funcval/expF;
+// //     double tgt2val = expF;
+// //     double tgt3val = target;
+// //     double tgt4val = funcval - target;
+//     //     double tgt2val = evts[iev]->TargetMin();
+// //     double tgt2val = evts[iev]->FuncVal() - evts[iev]->TargetMin();
+//     
+//     
+// //     double expS = vdt::fast_exp(targetmin);
+// //     double expnF = vdt::fast_exp(-target);
+// //     
+// //     double tgtval = funcval*expS*expnF;
+// //     double tgt2val = expS;
+// //     double tgt3val = log(funcval) - target;
+// //     
+// //     _weightvals[iev] = weight;
+// //     _tgtvals[iev] = weight*tgtval;
+// //     _tgt2vals[iev] = weight*tgt2val;  
+// //     _tgt3vals[iev] = weight*tgt3val;
+// //     _tgt4vals[iev] = weight*tgt4val;
+//     
+// //     _tgt5vals[iev] = weight*tgt5val;
+// //     _fvals[iev] = weight*fval;
+//     
+// //     _tgt2vals[iev] = weight*tgtval*tgtval;    
+//     
+// //     if (tgtval>tgtmax) tgtmax = tgtval;
+//     
+// //     printf("tgtval = %5f, funcval = %5f, tgt = %5f\n",tgtval,evts[iev]->FuncVal(),evts[iev]->Target());
+//     
+// //     double funcval = evts[iev]->FuncVal();
+// //     double target =  evts[iev]->Target();
+// //     double targetmin =  evts[iev]->TargetMin();
+//     
+// //     double oos = vdt::fast_exp(targetmin);
+// //     double oos2 = oos*oos;
+// //     double expr = target*oos2-a*oos-funcval*oos2;
+// //     double expr2 = 2.*target*oos2-a*oos-2*funcval*oos2;
+//     
+// //     _weightvals[iev] = weight;
+// //     _tgtvals[iev] = weight*expr;
+// //     _tgt2vals[iev] = weight*(-1. + (target-funcval)*expr);
+// //     _tgt3vals[iev] = weight*oos2;
+// //     _tgt4vals[iev] = weight*(target-funcval)*expr2;
+// //     _tgt5vals[iev] = weight*expr2;
+//     
+//     
+// //     double r = evts[iev]->FuncVal();
+// //     double h =  evts[iev]->Target();
+// //     double s =  evts[iev]->TargetMin();    
+//     
+// //     double rmh = r-h;
+// //     double exps = vdt::fast_exp(s);
+// //     double exp2s = vdt::fast_exp(2.*s);
+//     
+//     
+//     
+// //     _weightvals[iev] = weight;
+// //     _tgtvals[iev] = weight*exp2s*rmh;
+// //     _tgt2vals[iev] = weight*exp2s;
+// //     _tgt3vals[iev] = weight*exp2s*rmh*rmh;
+// //     _tgt4vals[iev] = weight*(target-funcval)*expr2;
+// //     _tgt5vals[iev] = weight*expr2;    
+//     
+//     
+//     
+// //     double r = evts[iev]->FuncVal();
+// //     double h =  evts[iev]->Target();
+// //     double s =  evts[iev]->TargetMin();    
+// //     
+// //     double rmh = r-h;
+// //     double exps = vdt::fast_exp(s);
+// //     double exp2s = exps*exps;
+// //     
+// //     
+// //     
+// //     _weightvals[iev] = weight;
+// //     _tgtvals[iev] = weight*rmh;
+// //     _tgt2vals[iev] = weight*rmh*rmh;
+// //     _tgt3vals[iev] = weight*exp2s*rmh*rmh;
+//     
+//     
+//     
+//     
+//     
+// //     _tgt2vals[iev] = weight*tgt2val;
+// //     _tgt2vals[iev] = weight*tgtmaxval;
+// //     _tgt2vals[iev] = weight*tgtval*tgtval;
+// //     _fvals[iev] = evts[iev]->Target();
+//     for (int ivar=0; ivar<nvars; ++ivar) {
+//       _quants[ivar][iev] = evts[iev]->Quantile(ivar);   
+//     }
+//   }  
+    
+//   double sigmascale = doenv ? std::max(1.,1./sigmaratiomax) : 1.;
+//   double sigmascale = doenv ? (1./(1-fShrinkageFactorSecondary)) : 1.;
+//   double valscale = 0 ? 1./(sigmascale*sigmascale) : 1.;
+  
+  constexpr double valsigma = 0.01;
+  constexpr double valscale = 1./valsigma/valsigma;
+//   constexpr double valscale = 1.;
+//   if (doenv) printf("sigmascale = %5f\n",sigmascale);
     
   //printf("second parallel loop\n");
 //   //trivial open-mp based multithreading of loop over input variables
   //The loop is thread safe since each iteration writes into its own
   //elements of the 2-d arrays
-  #pragma omp parallel for
+//   #pragma omp parallel for
   for (int ivar=0; ivar<nvars; ++ivar) {
              
     
@@ -2921,8 +3256,17 @@ void MCGBRIntegrator::TrainTree(const std::vector<MCGBREvent*> &evts, double sum
 //        double dh = doenv ? std::max(0.,-sumtgt/sumtgt2) : -sumtgt/sumtgt2;
 //        double curval = sumtgt*dh + 0.5*sumtgt2*dh*dh; 
        
-       double dh = 0 ? std::max(0.,-sumtgt/sumtgt2) : -sumtgt/sumtgt2;
-       double curval = sumtgt*dh + 0.5*sumtgt2*dh*dh; 
+//        double dh = 0 ? std::max(0.,-sumtgt/sumtgt2) : -sumtgt/sumtgt2;
+//        double curval = sumtgt*dh + 0.5*sumtgt2*dh*dh; 
+    
+    
+//     double curval = -k*sumtgt*sumtgt/sumw;
+    
+//     double curval = fDoEnvelope && !doenv ? kenv*sumw*sumtgtmax : -k*sumtgt*sumtgt/sumw;
+    
+//     double curval = fDoEnvelope && !doenv ? -0.5*sumtgt*sumtgt/sumtgt2 : -k*sumtgt*sumtgt/sumw;
+    
+    double curval = -0.5*sumtgt*sumtgt/sumtgt2;
     
 /*       double dh = doenv ? 0.5*(-2.*kenv*sumtgt + sqrt(4.*kenv*kenv*sumtgt*sumtgt + 8.*sumw*kenv*sumtgt2))/sumw : -sumtgt/sumtgt2;
        double curval = doenv ? -kenv*sumtgt*sumtgt/sumtgt2 + sumw*log(dh)  : sumtgt*dh + 0.5*sumtgt2*dh*dh; */   
@@ -3107,11 +3451,24 @@ void MCGBRIntegrator::TrainTree(const std::vector<MCGBREvent*> &evts, double sum
 //        double dhright = doenv ? 0.5*(-2.*kenv*righttgtsum + sqrt(4.*kenv*kenv*righttgtsum*righttgtsum + 8.*rightwsum*kenv*righttgt2sum))/rightwsum : -righttgtsum/righttgt2sum;
 //        double rightval = doenv ? -kenv*righttgtsum*righttgtsum/righttgt2sum + rightwsum*log(dhright)  : righttgtsum*dhright + 0.5*righttgt2sum*dhright*dhright;
        
-       double dhleft = 0 ? std::max(0.,-lefttgtsum/lefttgt2sum) : -lefttgtsum/lefttgt2sum;
-       double leftval = lefttgtsum*dhleft + 0.5*lefttgt2sum*dhleft*dhleft; 
+//        double leftval = -k*lefttgtsum*lefttgtsum/leftwsum;
+//        double rightval = -k*righttgtsum*righttgtsum/rightwsum;
+       
+//        double leftval = fDoEnvelope && !doenv ? kenv*leftwsum*lefttgtmax : -k*lefttgtsum*lefttgtsum/leftwsum;
+//        double rightval = fDoEnvelope && !doenv ? kenv*rightwsum*righttgtmax : -k*righttgtsum*righttgtsum/rightwsum;
+       
+       
+//        double leftval = fDoEnvelope && !doenv ? -0.5*lefttgtsum*lefttgtsum/lefttgt2sum : -k*lefttgtsum*lefttgtsum/leftwsum;
+//        double rightval = fDoEnvelope && !doenv ? -0.5*righttgtsum*righttgtsum/righttgt2sum : -k*righttgtsum*righttgtsum/rightwsum;
 
-       double dhright = 0 ? std::max(0.,-righttgtsum/righttgt2sum) : -righttgtsum/righttgt2sum;
-       double rightval = righttgtsum*dhright + 0.5*righttgt2sum*dhright*dhright; 
+       double leftval = -0.5*lefttgtsum*lefttgtsum/lefttgt2sum;
+       double rightval = -0.5*righttgtsum*righttgtsum/righttgt2sum;
+       
+//        double dhleft = 0 ? std::max(0.,-lefttgtsum/lefttgt2sum) : -lefttgtsum/lefttgt2sum;
+//        double leftval = lefttgtsum*dhleft + 0.5*lefttgt2sum*dhleft*dhleft; 
+// 
+//        double dhright = 0 ? std::max(0.,-righttgtsum/righttgt2sum) : -righttgtsum/righttgt2sum;
+//        double rightval = righttgtsum*dhright + 0.5*righttgt2sum*dhright*dhright; 
        
 //       double dhright = doenv ? std::max(0.,-righttgtsum/righttgt2sum) : -righttgtsum/righttgt2sum;
 //       double rightval = righttgtsum*dhright + 0.5*righttgt2sum*dhright*dhright;
@@ -3123,7 +3480,7 @@ void MCGBRIntegrator::TrainTree(const std::vector<MCGBREvent*> &evts, double sum
       
 //       printf("ibin = %i, curval = %5e, leftval = %5e, rightval = %5e\n",ibin,curval,leftval,rightval);
       
-      _bsepgains[ivar][ibin] = curval - leftval - rightval;
+      _bsepgains[ivar][ibin] = valscale*(curval - leftval - rightval);
     }
     
 //     double curval = k*sumw*sumtgtmin + k*sumw*sumtgtmax;
@@ -3262,7 +3619,7 @@ void MCGBRIntegrator::TrainTree(const std::vector<MCGBREvent*> &evts, double sum
   //check if left node is terminal
   //bool termleft = nleft<=(2*minevents) || depth==fMaxDepth;
 //   bool termleft = sumwleft<=(2*minevents) || (fMaxDepth>=0 && depth==fMaxDepth) || (fMaxNodes>=0 && int(tree.Responses().size())>=fMaxNodes) ;
-  bool termleft = nleft<(2*minevents) || (fMaxDepth>=0 && depth==fMaxDepth) || (fMaxNodes>=0 && int(tree.Responses().size())>=fMaxNodes) ;
+  bool termleft = nleft<(2*minevents) || (fMaxDepth>=0 && depth==fMaxDepth) || (maxnodes>=0 && int(tree.Responses().size())>=maxnodes) ;
   if (termleft) tree.LeftIndices()[thisidx] = -tree.Responses().size();
   else tree.LeftIndices()[thisidx] = tree.CutIndices().size();
   
@@ -3282,7 +3639,7 @@ void MCGBRIntegrator::TrainTree(const std::vector<MCGBREvent*> &evts, double sum
   //check if right node is terminal
   //bool termright = nright<=(2*minevents) || depth==fMaxDepth;
 //   bool termright = sumwright<=(2*minevents) || (fMaxDepth>=0 && depth==fMaxDepth) || (fMaxNodes>=0 && int(tree.Responses().size())>=fMaxNodes);
-  bool termright = nright<(2*minevents) || (fMaxDepth>=0 && depth==fMaxDepth) || (fMaxNodes>=0 && int(tree.Responses().size())>=fMaxNodes);
+  bool termright = nright<(2*minevents) || (fMaxDepth>=0 && depth==fMaxDepth) || (maxnodes>=0 && int(tree.Responses().size())>=maxnodes);
   if (termright) tree.RightIndices()[thisidx] = -tree.Responses().size();
   else tree.RightIndices()[thisidx] = tree.CutIndices().size();
     
@@ -3316,81 +3673,131 @@ void MCGBRIntegrator::BuildLeaf(const std::vector<MCGBREvent*> &evts, MCGBRTreeD
   double sumtgt2 = 0.;
 //   double tgtmax = std::numeric_limits<double>::lowest();
  
-  for (std::vector<MCGBREvent*>::const_iterator it = evts.begin(); it!=evts.end(); ++it) {
-    double weight = (*it)->Weight();
-    double funcval = (*it)->FuncVal();
-    double target =  (*it)->Target();
-    double targetmin =  (*it)->TargetMin();    
-//     double funcvalalt = (*it)->FuncValAlt();
-//     double tgtval = doenv ? exp(targetmin) - target : log(funcval) - targetmin;
-
-//     double tgtval = doenv ? NLSkewGausDMu(exp(targetmin),target) : log(funcval) - targetmin;
-//     double tgt2val = doenv ? NLSkewGausD2Mu(exp(targetmin),target) : 0.;
-    
-/*    double tgtval = doenv ? NLSkewGausDMu(funcval,target,doenv) : NLSkewGausDMu(log(funcval),targetmin,doenv);
-    double tgt2val = doenv ? NLSkewGausD2Mu(funcval,target,doenv ) : NLSkewGausD2Mu(log(funcval),targetmin,doenv);  */ 
-    
-//     double tgtval = doenv ? NLSkewGausDMu(exp(targetmin),target,doenv) : NLSkewGausDMu(log(funcval),targetmin,doenv);
-//     double tgt2val = doenv ? NLSkewGausD2Mu(exp(targetmin),target,doenv ) : NLSkewGausD2Mu(log(funcval),targetmin,doenv);
-    
-//     double tgtval = doenv ? NLSkewGausDMu(exp(targetmin),target,funcval,doenv) : NLSkewGausDMu(log(funcval),targetmin,funcval,doenv);
-//     double tgt2val = doenv ? NLSkewGausD2Mu(exp(targetmin),target,funcval,doenv ) : NLSkewGausD2Mu(log(funcval),targetmin,funcval,doenv);
-
-//     double tgtval = doenv ? NLLogNormDMu(exp(targetmin),target) : NLNormDMu(log(funcval),targetmin);
-//     double tgt2val = doenv ? NLLogNormD2Mu(exp(targetmin),target) : NLNormD2Mu(log(funcval),targetmin);
-    
-//     double tgtval = doenv ? NLLogNormDMu(exp(targetmin),target) : NLNormDMu(log(funcval),targetmin);
-//     double tgt2val = doenv ? NLLogNormD2Mu(exp(targetmin),target) : NLNormD2Mu(log(funcval),targetmin);
-    
-//     double tgtval = doenv ? NLLogNormDMu(exp(targetmin),target,funcvalalt) : NLNormDMu(log(funcval),targetmin);
-//     double tgt2val = doenv ? NLLogNormD2Mu(exp(targetmin),target,funcvalalt) : NLNormD2Mu(log(funcval),targetmin);
-
-//     double tgtval = doenv ? exp(targetmin) : NLNormDMu(log(funcval),targetmin);
-//     double tgt2val = doenv ? exp(2.*targetmin) : NLNormD2Mu(log(funcval),targetmin);
-
-//     double tgtval = doenv ?  NLLogNormDMu(exp(targetmin),target) : NLNormDMu(log(funcval),targetmin);
-//     double tgt2val = doenv ? NLLogNormD2Mu(exp(targetmin),target) : NLNormD2Mu(log(funcval),targetmin);
-
-//     double tgtval = doenv ?  NLNormDMu(targetmin,0.) : NLNormDMu(log(funcval),targetmin);
-//     double tgt2val = doenv ? NLNormD2Mu(targetmin,0.) : NLNormD2Mu(log(funcval),targetmin);
-
-//     double tgtval = doenv ?  NLNormDMu(log(std::max(1e-6,exp(targetmin)-target)),0.) : NLNormDMu(log(funcval),targetmin);
-//     double tgt2val = doenv ? NLNormD2Mu(log(std::max(1e-6,exp(targetmin)-target)),0.) : NLNormD2Mu(log(funcval),targetmin);
-   
-    double sigma = doenv ? 0.01 : 0.01;
-    double tgtval = doenv ?  NLNormDMu(log(std::max(exp(-24.),exp(targetmin)-target)),0.,sigma) : NLNormDMu(log(funcval),targetmin,sigma);
-    double tgt2val = doenv ? NLNormD2Mu(log(std::max(exp(-24.),exp(targetmin)-target)),0.,sigma) : NLNormD2Mu(log(funcval),targetmin,sigma);
-    
-//     double tgtval = doenv ? NLNormDMu(targetmin,target) : NLNormDMu(log(funcval),targetmin);
-//     double tgt2val = doenv ? NLNormD2Mu(targetmin,target) : NLNormD2Mu(log(funcval),targetmin);
-    
-//     printf("funcval = %5e, funcvalalt = %5e\n",funcval,funcvalalt);
-    
-//     double tgtval = doenv ? NLNormDMu(exp(targetmin),target) : NLNormDMu(log(funcval),targetmin);
-//     double tgt2val = doenv ? NLNormD2Mu(exp(targetmin),target) : NLNormD2Mu(log(funcval),targetmin);
-    
-//     double tgtval = doenv ? NLSkewGausDMu(funcval,target,funcval,doenv) : NLSkewGausDMu(log(funcval),targetmin,funcval,doenv);
-//     double tgt2val = doenv ? NLSkewGausD2Mu(funcval,target,funcval,doenv ) : NLSkewGausD2Mu(log(funcval),targetmin,funcval,doenv);
-    
-/*    double tgtval = doenv ? NLSkewGausDMu(funcval,target) : log(funcval) - targetmin;
-    double tgt2val = doenv ? NLSkewGausD2Mu(funcval,target) : 0.;  */ 
-    
-//     if (0) {
-//       if (!std::isnormal(tgtval) || !std::isnormal(tgt2val)) {
-//         printf("targetmin = %5e, exp(targetmin) = %5e, target = %5e, tgtval = %5e, tgt2val = %5e\n",targetmin,exp(targetmin),target,tgtval,tgt2val);
-//       }
-//     }
-    
-//     if (tgtval > tgtmax) {
-//       tgtmax = tgtval;
-//     }
-    
-//     sumw += weight;
-    sumtgt += weight*tgtval;
-    sumtgt2 += weight*tgt2val;
-
-    
+  if (doenv) {
+    for (std::vector<MCGBREvent*>::const_iterator it = evts.begin(); it!=evts.end(); ++it) {
+//       double weight = (*it)->Weight();
+      const double arg = (*it)->Arg();
+      const double tgtval = -arg;
+      const double tgt2val = 1.;
+      
+      sumtgt += tgtval;
+      sumtgt2 += tgt2val;
+    }
   }
+  else {
+    for (std::vector<MCGBREvent*>::const_iterator it = evts.begin(); it!=evts.end(); ++it) {
+//       double weight = (*it)->Weight();
+      const double arg = (*it)->ArgLog();
+      const double tgtval = -arg;
+      const double tgt2val = 1.;
+      
+      sumtgt += tgtval;
+      sumtgt2 += tgt2val;
+    }
+  }
+  
+//   for (std::vector<MCGBREvent*>::const_iterator it = evts.begin(); it!=evts.end(); ++it) {
+//     double weight = (*it)->Weight();
+//     double funcval = (*it)->FuncVal();
+//     double target =  (*it)->Target();
+//     double targetmin =  (*it)->TargetMin();    
+// //     double funcvalalt = (*it)->FuncValAlt();
+// //     double tgtval = doenv ? exp(targetmin) - target : log(funcval) - targetmin;
+// 
+// //     double tgtval = doenv ? NLSkewGausDMu(exp(targetmin),target) : log(funcval) - targetmin;
+// //     double tgt2val = doenv ? NLSkewGausD2Mu(exp(targetmin),target) : 0.;
+//     
+// /*    double tgtval = doenv ? NLSkewGausDMu(funcval,target,doenv) : NLSkewGausDMu(log(funcval),targetmin,doenv);
+//     double tgt2val = doenv ? NLSkewGausD2Mu(funcval,target,doenv ) : NLSkewGausD2Mu(log(funcval),targetmin,doenv);  */ 
+//     
+// //     double tgtval = doenv ? NLSkewGausDMu(exp(targetmin),target,doenv) : NLSkewGausDMu(log(funcval),targetmin,doenv);
+// //     double tgt2val = doenv ? NLSkewGausD2Mu(exp(targetmin),target,doenv ) : NLSkewGausD2Mu(log(funcval),targetmin,doenv);
+//     
+// //     double tgtval = doenv ? NLSkewGausDMu(exp(targetmin),target,funcval,doenv) : NLSkewGausDMu(log(funcval),targetmin,funcval,doenv);
+// //     double tgt2val = doenv ? NLSkewGausD2Mu(exp(targetmin),target,funcval,doenv ) : NLSkewGausD2Mu(log(funcval),targetmin,funcval,doenv);
+// 
+// //     double tgtval = doenv ? NLLogNormDMu(exp(targetmin),target) : NLNormDMu(log(funcval),targetmin);
+// //     double tgt2val = doenv ? NLLogNormD2Mu(exp(targetmin),target) : NLNormD2Mu(log(funcval),targetmin);
+//     
+// //     double tgtval = doenv ? NLLogNormDMu(exp(targetmin),target) : NLNormDMu(log(funcval),targetmin);
+// //     double tgt2val = doenv ? NLLogNormD2Mu(exp(targetmin),target) : NLNormD2Mu(log(funcval),targetmin);
+//     
+// //     double tgtval = doenv ? NLLogNormDMu(exp(targetmin),target,funcvalalt) : NLNormDMu(log(funcval),targetmin);
+// //     double tgt2val = doenv ? NLLogNormD2Mu(exp(targetmin),target,funcvalalt) : NLNormD2Mu(log(funcval),targetmin);
+// 
+// //     double tgtval = doenv ? exp(targetmin) : NLNormDMu(log(funcval),targetmin);
+// //     double tgt2val = doenv ? exp(2.*targetmin) : NLNormD2Mu(log(funcval),targetmin);
+// 
+// //     double tgtval = doenv ?  NLLogNormDMu(exp(targetmin),target) : NLNormDMu(log(funcval),targetmin);
+// //     double tgt2val = doenv ? NLLogNormD2Mu(exp(targetmin),target) : NLNormD2Mu(log(funcval),targetmin);
+// 
+// //     double tgtval = doenv ?  NLNormDMu(targetmin,0.) : NLNormDMu(log(funcval),targetmin);
+// //     double tgt2val = doenv ? NLNormD2Mu(targetmin,0.) : NLNormD2Mu(log(funcval),targetmin);
+// 
+// //     double tgtval = doenv ?  NLNormDMu(log(std::max(1e-6,exp(targetmin)-target)),0.) : NLNormDMu(log(funcval),targetmin);
+// //     double tgt2val = doenv ? NLNormD2Mu(log(std::max(1e-6,exp(targetmin)-target)),0.) : NLNormD2Mu(log(funcval),targetmin);
+//    
+// //     double sigma = doenv ? 0.01 : 0.01;
+// //     double tgtval = doenv ?  NLNormDMu(log(std::max(exp(-24.),exp(targetmin)-target)),0.,sigma) : NLNormDMu(log(funcval),targetmin,sigma);
+// //     double tgt2val = doenv ? NLNormD2Mu(log(std::max(exp(-24.),exp(targetmin)-target)),0.,sigma) : NLNormD2Mu(log(funcval),targetmin,sigma);
+//     
+// //     double tgtval = doenv ? NLNormDMu(targetmin,target) : NLNormDMu(log(funcval),targetmin);
+// //     double tgt2val = doenv ? NLNormD2Mu(targetmin,target) : NLNormD2Mu(log(funcval),targetmin);
+//     
+// //     printf("funcval = %5e, funcvalalt = %5e\n",funcval,funcvalalt);
+//     
+// //     double tgtval = doenv ? NLNormDMu(exp(targetmin),target) : NLNormDMu(log(funcval),targetmin);
+// //     double tgt2val = doenv ? NLNormD2Mu(exp(targetmin),target) : NLNormD2Mu(log(funcval),targetmin);
+//     
+// //     double tgtval = doenv ? NLSkewGausDMu(funcval,target,funcval,doenv) : NLSkewGausDMu(log(funcval),targetmin,funcval,doenv);
+// //     double tgt2val = doenv ? NLSkewGausD2Mu(funcval,target,funcval,doenv ) : NLSkewGausD2Mu(log(funcval),targetmin,funcval,doenv);
+//     
+// /*    double tgtval = doenv ? NLSkewGausDMu(funcval,target) : log(funcval) - targetmin;
+//     double tgt2val = doenv ? NLSkewGausD2Mu(funcval,target) : 0.;  */ 
+//     
+// //     if (0) {
+// //       if (!std::isnormal(tgtval) || !std::isnormal(tgt2val)) {
+// //         printf("targetmin = %5e, exp(targetmin) = %5e, target = %5e, tgtval = %5e, tgt2val = %5e\n",targetmin,exp(targetmin),target,tgtval,tgt2val);
+// //       }
+// //     }
+//     
+// //     double tgtval = doenv ? log(std::max(exp(-24.),exp(targetmin)-target)) : log(funcval) - targetmin;
+// 
+// //     double tgtval = doenv ? log(std::max(exp(-24.),exp(targetmin)-target)) : (fDoEnvelope ? NLSkewGausDMu(log(funcval),targetmin) : log(funcval) - targetmin);
+// //     double tgt2val = doenv ? 0. : (fDoEnvelope ? NLSkewGausD2Mu(log(funcval),targetmin) : 0.);
+// 
+// //     double tgtval; = doenv ? log(std::max(exp(-24.),exp(targetmin)-target)) : (fDoEnvelope ? NLSkewGausDMu(log(funcval),targetmin) : log(funcval) - targetmin);
+// //     double tgt2val; = doenv ? 0. : (fDoEnvelope ? NLSkewGausD2Mu(log(funcval),targetmin) : 0.);
+// 
+//     double px = doenv ? log(std::max(exp(-128.),exp(targetmin)-target)) : log(funcval);
+//     double pmu = doenv ? 0. : targetmin;
+// //     double sigmabase = 0.05;
+// //     double psigma = doenv ? 1. : 0.3;
+// //     double psigma = sigmabase;
+//     double psigma = 0.05;
+//     double tgtval = fDoEnvelope && !doenv ? NLSkewGausDMu(px,pmu) : NLNormDMu(px,pmu,psigma);
+//     double tgt2val = fDoEnvelope && !doenv ? NLSkewGausD2Mu(px,pmu) : NLNormD2Mu(px,pmu,psigma);
+// 
+// //     double px = doenv ? log(std::max(exp(-128.),funcval-target)) : log(funcval);
+// //     double pmu = doenv ? 0. : targetmin;
+// //     double sigmabase = 0.05;
+// //     double psigma = sigmabase;
+// //     double tgtval = fDoEnvelope && !doenv ? NLSkewGausDMu(px,pmu) : NLNormDMu(px,pmu,psigma);
+// //     double tgt2val = fDoEnvelope && !doenv ? NLSkewGausD2Mu(px,pmu) : NLNormD2Mu(px,pmu,psigma);
+//     
+//     
+// //     double tgtval = fDoEnvelope && !doenv ? 
+//     
+// //     if (tgtval > tgtmax) {
+// //       tgtmax = tgtval;
+// //     }
+//     
+// //     sumw += weight;
+//     sumtgt += weight*tgtval;
+//     sumtgt2 += weight*tgt2val;
+// 
+//     
+//   }
   
 //   if (doenv) printf("sumtgt = %5e, sumtgt2 = %5e, dh = %5e\n",sumtgt,sumtgt2,-sumtgt/sumtgt2);
   
@@ -3407,9 +3814,15 @@ void MCGBRIntegrator::BuildLeaf(const std::vector<MCGBREvent*> &evts, MCGBRTreeD
 //   double dh = doenv ? 0.5*(-2.*kenv*sumtgt + sqrt(4.*kenv*kenv*sumtgt*sumtgt + 8.*sumw*kenv*sumtgt2))/sumw : -sumtgt/sumtgt2;
 //   double response = doenv ? dh : fShrinkage*dh;
 
+//     double dh =  fDoEnvelope && !doenv ? -sumtgt/sumtgt2 : sumtgt/sumw;
+
+    double dh = -sumtgt/sumtgt2;
+    double response = doenv ? fShrinkage*vdt::fast_exp(dh) : fShrinkage*dh;
+//     double response = doenv ? std::min(exp(fShrinkage*dh),exp(dh/fShrinkage)) : fShrinkage*dh;
+
 //   double dh = doenv ? std::max(0.,-sumtgt/sumtgt2) : -sumtgt/sumtgt2;
-  double dh =  -sumtgt/sumtgt2;
-  double response = doenv ? fShrinkage*exp(dh) : fShrinkage*dh;
+//   double dh =  -sumtgt/sumtgt2;
+//   double response = doenv ? fShrinkage*exp(dh) : fShrinkage*dh;
 //   double response = doenv ? fShrinkage*exp(dh) : fShrinkage*dh;
   
 //   if (doenv) {
@@ -3421,16 +3834,16 @@ void MCGBRIntegrator::BuildLeaf(const std::vector<MCGBREvent*> &evts, MCGBRTreeD
   double responsemin = 0.;
   double response3 = 0.;
   
-  for (std::vector<MCGBREvent*>::const_iterator it = evts.begin(); it!=evts.end(); ++it) {
-    if (doenv) {
-      (*it)->SetTarget((*it)->Target()+response);
-    }
-    else {
-      (*it)->SetTargetMin((*it)->TargetMin()+response);
-    }
-//     (*it)->SetTargetMin((*it)->TargetMin()+responsemin);
-//     (*it)->SetTarget3((*it)->Target3()+response3);
-  }
+//   for (std::vector<MCGBREvent*>::const_iterator it = evts.begin(); it!=evts.end(); ++it) {
+//     if (doenv) {
+//       (*it)->SetTarget((*it)->Target()+response);
+//     }
+//     else {
+//       (*it)->SetTargetMin((*it)->TargetMin()+response);
+//     }
+// //     (*it)->SetTargetMin((*it)->TargetMin()+responsemin);
+// //     (*it)->SetTarget3((*it)->Target3()+response3);
+//   }
   
   tree.Responses().push_back(response);
   tree.ResponsesMin().push_back(responsemin);

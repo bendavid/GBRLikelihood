@@ -25,7 +25,7 @@
 class MCGBRIntegrator : public TNamed {
 public:
   
-  MCGBRIntegrator(const char *name, const char *title, int nevents);
+  MCGBRIntegrator(const char *name, const char *title, int nevents, int neventsinitial);
 
   ~MCGBRIntegrator();
 
@@ -40,6 +40,10 @@ public:
   void SetMinWeightTotal(double x) { fMinWeightTotal = x; }
   void SetMaxDepth(int depth) { fMaxDepth = depth; } 
   void SetMaxNodes(int max) { fMaxNodes = max; }
+  void SetDoEnvelope(bool b) { fDoEnvelope = b; }
+  void SetStagedGeneration(bool b) { fStagedGeneration = b; }
+  void SetNEventsBagged(int n) { fNEventsBagged = n; }
+//   void SetNEventsInitial(int n) { fNEventsInitial = n; }
  
   void TrainForest(int ntrees, bool reuseforest = false);  
   
@@ -54,14 +58,14 @@ public:
 protected:
 
 //   double NLSkewGaus(double x, double mu) const;
-  double NLSkewGausDMu(double x, double envelope, double extx, bool doenv) const;
-  double NLSkewGausD2Mu(double x, double envelope,double extx, bool doenv) const;
+  inline double NLSkewGausDMu(double x, double envelope) const;
+  inline double NLSkewGausD2Mu(double x, double envelope) const;
   
-  double NLNormDMu(double x, double mu, double sigma) const;
-  double NLNormD2Mu(double x, double mu, double sigma) const;
+  inline double NLNormDMu(double x, double mu, double sigma) const;
+  inline double NLNormD2Mu(double x, double mu, double sigma) const;
 
-  double NLLogNormDMu(double x, double mu) const;
-  double NLLogNormD2Mu(double x, double mu) const;  
+  inline double NLLogNormDMu(double x, double mu) const;
+  inline double NLLogNormD2Mu(double x, double mu) const;  
   
   void BuildQuantiles(int nvars, double sumabsw);
   void FillDerivatives();
@@ -87,6 +91,8 @@ protected:
   double                    fMinCutSignificance;
   double                    fMinCutSignificanceMulti;
   int                       fNEvents;
+  int                       fNEventsInitial;
+  int                       fNEventsBagged;
   
   
   int                       fMaxDepth;
@@ -182,6 +188,12 @@ protected:
   double fForestIntegralNow;
   double fSigmaScale;
   double fShrinkageFactorSecondary;
+  
+  bool fDoEnvelope;
+  bool fStagedGeneration;
+  
+  double fSigmaRatio;
+  double fIntegralRatio;
   
   
 };
