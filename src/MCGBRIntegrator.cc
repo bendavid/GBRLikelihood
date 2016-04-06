@@ -1097,7 +1097,7 @@ void MCGBRIntegrator::TrainForest(int ntrees, bool reuseforest) {
 //     constexpr double cutoff = exp(-512.);
 //     constexpr double cutoff = -12.;
 //     const double logcutoff = -12. + fLogMean + log(fIntegralEst);
-    const double cutoff = exp(-24.)*valmult*fIntegralEst/totvolume;
+    const double cutoff = exp(-16.)*valmult*fIntegralEst/totvolume;
 //     const double logvalmult = log(valmult);
 //     const double funcvalcutoff = 1e-3;
 //     const double logfuncvalcutoff = log(funcvalcutoff);
