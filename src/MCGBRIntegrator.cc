@@ -347,7 +347,7 @@ MCGBRIntegrator::MCGBRIntegrator(const char *name, const char *title, int nevent
   fNEventsBagged(-99),
   fMaxDepth(-1),
   fMaxNodes(-1),
-  fNVars(9),
+  fNVars(4),
   fForest(0),
   fForestGen(0),
   fGenTree(0),
@@ -357,7 +357,9 @@ MCGBRIntegrator::MCGBRIntegrator(const char *name, const char *title, int nevent
   fDoEnvelope(false),
   fStagedGeneration(false),
   fSigmaRatio(1.),
-  fIntegralRatio(1.)
+  fIntegralRatio(1.),
+  fIntegralEst(0.),
+  fLogMean(-256.)
 {
   
   Eigen::initParallel();
@@ -496,6 +498,14 @@ MCGBRIntegrator::MCGBRIntegrator(const char *name, const char *title, int nevent
     fLimits.push_back(std::pair<float,float>(0.,1.0));
   }
 
+  
+  double totvolume = 1;
+  for (int ivar=0; ivar<fNVars; ++ivar) {
+    double low = fLimits[ivar].first;
+    double high = fLimits[ivar].second;
+    totvolume *= (high-low);
+  }    
+  
   std::vector<double> tmpvals(fNVars);
   
 //   for (int iev=0; iev<nev; ++iev) {
@@ -522,8 +532,13 @@ MCGBRIntegrator::MCGBRIntegrator(const char *name, const char *title, int nevent
 //     sumabsw += std::abs(evt.Weight());
 //   }
   
+  double sumest = 0.;
+  double sumestw = 0.;
+  
   int iev = 0;
   while (iev<nev) {
+    
+   
     
     for (int ivar=0; ivar<nvars; ++ivar) {
       double low = fLimits[ivar].first;
@@ -536,15 +551,20 @@ MCGBRIntegrator::MCGBRIntegrator(const char *name, const char *title, int nevent
 //     double funcval = Camel(fNVars,tmpvals.data());
     double funcval = Camelrnd(fNVars,tmpvals.data());
     
-//     double origin = 90.;
+//     double funcmax = 3e6;
+//     double funcmax = 16200.;
+//     double logoffset = 20.;
+//     double origin = funcmax;
 //     double target = funcval;
 //     double target = 90.-funcval;
-//     double origin = 510.;
+//     double origin = log(funcmax)+logoffset;
 //     double target = funcval;
 //     double origin = 12.71;
-//     double target = log(funcval) + 10.;
+//     double target = std::max(1.,log(funcval) + logoffset);
 //     double rnd = gRandom->Uniform(0.,origin);
 //     if (target < rnd) continue;
+    
+//     if (iev%1000==0) printf("iev = %i\n",iev);
     
     fEvts.push_back(new MCGBREvent(nvars));
     MCGBREvent &evt = *fEvts.back();
@@ -559,16 +579,21 @@ MCGBRIntegrator::MCGBRIntegrator(const char *name, const char *title, int nevent
 //     funcval = funcval + 0.05 + 0.01*gRandom->Gaus();
 //     funcval = funcval + 0.01*gRandom->Gaus();
     evt.SetFuncVal(funcval);
-    evt.SetFuncValAlt(vdt::fast_log(funcval));
+    evt.SetFuncValAlt(log(funcval));
 //     double logsigma = log(funcval) + 1.*gRandom->Gaus();
 //     evt.SetFuncValAlt(exp(0.1*gRandom->Gaus()));
 //     evt.SetTarget(fForestGen->InitialResponse());
 //     evt.SetTargetMin(fForest->InitialResponse());
 //     evt.SetWeight(1./funcval/funcval);
 
+    sumest += funcval*totvolume;
+    sumestw += 1.;
+    
     sumabsw += std::abs(evt.Weight());
     ++iev;
   }  
+  
+  fIntegralEst = sumest/sumestw;
   
   
   //second loop here
@@ -838,6 +863,8 @@ void MCGBRIntegrator::BuildQuantiles(int nvars, double sumabsw) {
 
 void MCGBRIntegrator::TrainForest(int ntrees, bool reuseforest) {
 
+  double maxinterratio = 1.;
+  
   if (fDoEnvelope) {
     fStagedGeneration = true;
   }
@@ -889,21 +916,44 @@ void MCGBRIntegrator::TrainForest(int ntrees, bool reuseforest) {
 //     fEvts[iev]->SetTarget(fForest->InitialResponse());
   }
   
+//   double sumlog = 0.;
+//   double sumlogw = 0.;
+//   double sumfuncval = 0.;
+//   for (MCGBREvent *evt : fEvts) {
+//     const double funcval = evt->FuncVal();
+//     const double funcvalalt = evt->FuncValAlt();
+//     
+//     sumlog += funcvalalt;
+//     sumlogw += 1.;
+//     sumfuncval += funcval;    
+//   }
+//   fLogMean = sumlog/sumlogw;
+//   double funcvalmean = sumfuncval/sumlogw;
+//   printf("initial fLogMean = %5f, funcvalmean = %5e\n",fLogMean,funcvalmean);
+//     fLogMe  
   
-  fForest->SetInitialResponse(-128.);
-//   fForest->SetInitialResponse(0.);
+//   fForest->SetInitialResponse(-24.);
+  fForest->SetInitialResponse(0.);
 //   fForest->SetInitialResponseMin(0.);
 //   fForest->SetInitialResponseMin(-log(100.));
   
-//   fForestGen->SetInitialResponse(exp(-128.));
-  fForestGen->SetInitialResponse(0.);
+  fForestGen->SetInitialResponse(exp(fLogMean)*fIntegralEst/totvolume);
+//   fForestGen->SetInitialResponse(0.);
+//   fForestGen->SetInitialResponse(exp(fLogMean));
 //   fForestGen->SetInitialResponseMin(0.);  
   
 //   const double initialraw = exp(fForest->InitialResponse());
   
+  double maxfuncval = std::numeric_limits<double>::lowest();
+  
   for (unsigned int iev=0; iev<fEvts.size(); ++iev) {
     fEvts[iev]->SetTarget(fForestGen->InitialResponse());
     fEvts[iev]->SetTargetMin(fForest->InitialResponse());
+    
+    const double funcval = fEvts[iev]->FuncVal();
+    if (funcval>maxfuncval) {
+      maxfuncval = funcval;
+    }
   }  
   
 //   double shrinkagefactor = 0.;
@@ -955,7 +1005,7 @@ void MCGBRIntegrator::TrainForest(int ntrees, bool reuseforest) {
     double sumw = 0.;
     int nev = fEvts.size();
     
-//     int nev = std::min(int(1e5),int(fEvts.size()));
+//     int nev = std::min(int(5e5),int(fEvts.size()));
     std::vector<MCGBREvent*> evtstrimmed(fEvts.end()-nev,fEvts.end());
     fEvts.swap(evtstrimmed);
     
@@ -1007,7 +1057,7 @@ void MCGBRIntegrator::TrainForest(int ntrees, bool reuseforest) {
     fForestGen->Trees().emplace_back();
     MCGBRTreeD &gentree = fForestGen->Trees().back();
 
-    constexpr double cutoff = exp(-128.);
+//     constexpr double cutoff = exp(-512.);
     
     int nevrnd = nev;
     std::vector<MCGBREvent*> rndevts;
@@ -1024,21 +1074,92 @@ void MCGBRIntegrator::TrainForest(int ntrees, bool reuseforest) {
       rndevts = fEvts;
     }
     
+//     double sumlogdiff = 0.;
+//     double sumlogdiffw = 0.;
+//     for (MCGBREvent *evt : fEvts) {
+//       const double target = evt->Target();
+//       const double funcvalalt = evt->FuncValAlt();
+//       
+//       sumlogdiff += funcvalalt - vdt::fast_log(target);
+//       sumlogdiffw += 1.;
+//     }
+//     fLogMean = sumlogdiff/sumlogdiffw;    
+//     printf("fLogMean = %5f\n",fLogMean);
+
+    fLogMean += -fShrinkage*fLogMean;
+//     fLogMean = 0.;
+//     printf("fLogMean = %5f\n",fLogMean);
+    const double valcutoff = maxfuncval*vdt::fast_exp(fLogMean);
+//     const double valmult = vdt::fast_exp(fLogMean);
+    const double valmult = exp(fLogMean);
+    
+//     constexpr double cutoff = exp(-512.);
+//     constexpr double cutoff = exp(-512.);
+//     constexpr double cutoff = -12.;
+//     const double logcutoff = -12. + fLogMean + log(fIntegralEst);
+    const double cutoff = exp(-24.)*valmult*fIntegralEst/totvolume;
+//     const double logvalmult = log(valmult);
+//     const double funcvalcutoff = 1e-3;
+//     const double logfuncvalcutoff = log(funcvalcutoff);
+
+//     double muldiffmin = std::numeric_limits<double>::max();
+//     for (int iev=0; iev<nevrnd; ++iev) {
+//       const double target = rndevts[iev]->Target();
+// //       const double targetmin = rndevts[iev]->TargetMin();
+//       const double funcval = rndevts[iev]->FuncVal();
+//       
+//       double muldiff = funcval*valmult-target;
+//       if (muldiff>0. && muldiff<muldiffmin) {
+//         muldiffmin = muldiff;
+//       }
+//     }
+//     cutoff = exp(-128.)*muldiffmin;
+    
     #pragma omp parallel for simd
     for (int iev=0; iev<nevrnd; ++iev) {
       const double target = rndevts[iev]->Target();
-      const double targetmin = rndevts[iev]->TargetMin();
-//       const double funcval = rndevts[iev]->FuncVal();
-      const double funcvalalt = rndevts[iev]->FuncValAlt();
+//       const double targetmin = rndevts[iev]->TargetMin();
+      const double funcval = rndevts[iev]->FuncVal();
       
-      _tgtvals[iev] = vdt::fast_log(std::max(cutoff,vdt::fast_exp(targetmin)-target));
+//       _tgtvals[iev] = funcval - target;
+      
+//       _tgtvals[iev] = vdt::fast_log(std::max(cutoff,vdt::fast_exp(targetmin)-target));
 //       _tgtvals[iev] = vdt::fast_log(std::max(cutoff,funcval-target));
-      _tgt2vals[iev] = funcvalalt - targetmin;
+//       _tgt2vals[iev] = funcvalalt - targetmin;
+//       _tgtvals[iev] = vdt::fast_log(std::max(cutoff,funcval-target));
+//       _tgtvals[iev] = vdt::fast_log(std::max(cutoff,funcval*vdt::fast_exp(fLogMean)-target));
+      
+//       _tgtvals[iev] = vdt::fast_log(std::max(cutoff,funcval*valmult-target));
+      
+      
+//       _tgtvals[iev] = vdt::fast_log(std::max(cutoff*valmult,funcval*valmult-target));
+      
+      double muldiff = funcval*valmult - target;
+      _tgtvals[iev] = log(std::max(cutoff,muldiff));
+      
+//       _tgtvals[iev] = vdt::fast_log(std::max(0.,funcval*valmult-target));
+      
+//       _tgtvals[iev] = log(std::max(cutoff,funcval*valmult-target));
+      
+      
+//       _tgtvals[iev] = funcval > target ? vdt::fast_log(funcval*valmult-target) : 0.;
+      
+//       _tgtvals[iev] = 0.5*vdt::fast_log(std::max(cutoff,funcval*valmult-target));
+//       _tgtvals[iev] = vdt::fast_log(pow(std::max(cutoff,funcval*valmult-target),2.));            
+      
+      
+//       _tgtvals[iev] = vdt::fast_log(std::max(cutoff,funcval-target*vdt::fast_exp(-targetmin))) + targetmin;
+//       _tgtvals[iev] = vdt::fast_log(std::max(cutoff,funcval*vdt::fast_exp(targetmin)-target));
+//       _tgtvals[iev] = vdt::fast_log(std::max(cutoff,funcval-target));
+//       _tgtvals[iev] = vdt::fast_log(std::max(cutoff,vdt::fast_exp(targetmin)-target));
+//       _tgtvals[iev] = vdt::fast_log(std::max(cutoff,funcval-target*vdt::fast_exp(-targetmin))) + targetmin;
+//       _tgtvals[iev] = vdt::fast_log(std::max(cutoff,funcval-target*vdt::fast_exp(-targetmin))) + targetmin;
+//       _tgtvals[iev] = vdt::fast_log(std::max(cutoff,funcval-target));
+//       _tgtvals[iev] = vdt::fast_log(std::max(cutoff,funcval-target));
     }  
     
     for (int iev=0; iev<nevrnd; ++iev) {
       rndevts[iev]->SetArg(_tgtvals[iev]);
-      rndevts[iev]->SetArgLog(_tgt2vals[iev]);
     }
     
 /*    #pragma omp parallel for
@@ -1057,8 +1178,91 @@ void MCGBRIntegrator::TrainForest(int ntrees, bool reuseforest) {
 //       fEvts[iev]->SetArg(_tgtvals[iev]);
 //       fEvts[iev]->SetArgLog(_tgt2vals[iev]);
 //     }
-    
+
+    printf("fLogMean = %5f, maxfuncval = %5f, valcutoff = %5e\n",fLogMean,maxfuncval,valcutoff);    
+
+
     printf("training tree\n");
+
+//     TrainTree(fEvts,sumw,gentree,0,limits,true,true);   
+// #pragma omp parallel
+    TrainTree(rndevts,sumw,gentree,0,limits,true,true);   
+    
+//     double treeintegraltmp = 0.;
+//     for (unsigned int inode = 0; inode<gentree.Responses().size(); ++inode) {
+//       double response = gentree.GetResponse(inode);
+//       double volume = 1.0;
+//       for (int ivar=0; ivar<fNVars; ++ivar) {
+//         double low = gentree.Limits()[inode][ivar].first;
+//         double high = gentree.Limits()[inode][ivar].second;
+//         volume *= (high-low);
+//       }
+//       const double prob = response*volume;
+//       treeintegraltmp += prob;
+//     }
+//     double maxtreeintegral = fShrinkage*(fIntegralEst-forestintegral);
+//     if (treeintegraltmp > maxtreeintegral) {
+//       double scaletree = maxtreeintegral/treeintegraltmp;
+//       for (unsigned int inode = 0; inode<gentree.Responses().size(); ++inode) {
+//         gentree.Responses()[inode]*=scaletree;
+//       }
+//     }
+    
+    
+    for (MCGBREvent *evt : fEvts) {
+      for (int ivar=0; ivar<fNVars; ++ivar) {
+        evalv[ivar] = evt->Var(ivar);
+      }
+      double response = gentree.GetResponse(evalv.data());
+      evt->SetTarget(evt->Target() + response);
+
+    }
+    
+//     double sumlogdiff = 0.;
+//     double sumlogdiffw = 0.;
+//     for (MCGBREvent *evt : fEvts) {
+//       const double target = evt->Target();
+//       const double funcvalalt = evt->FuncValAlt();
+//       
+//       sumlogdiff += funcvalalt - vdt::fast_log(target);
+//       sumlogdiffw += 1.;
+//     }
+//     fLogMean = sumlogdiff/sumlogdiffw;    
+    
+    #pragma omp parallel for simd
+    for (int iev=0; iev<nevrnd; ++iev) {
+      const double target = rndevts[iev]->Target();
+      const double targetmin = rndevts[iev]->TargetMin();
+      const double funcvalalt = rndevts[iev]->FuncValAlt();
+      
+//       const double expF = vdt::fast_exp(targetmin);
+//       const double logdiff = funcvalalt - vdt::fast_log(target);
+      
+//       _tgtvals[iev] = vdt::fast_log(std::max(cutoff,vdt::fast_exp(targetmin)-target));
+//       _tgtvals[iev] = vdt::fast_log(std::max(cutoff,funcval-target));
+//       _tgtvals[iev] = funcvalalt - targetmin;
+      
+      _tgtvals[iev] = funcvalalt - log(target) + targetmin;
+//       _tgtvals[iev] = std::max(logfuncvalcutoff,funcvalalt) - log(target) + targetmin;
+      
+//       _tgtvals[iev] = funcvalalt - vdt::fast_log(target) + fLogMean + targetmin;
+//       _tgtvals[iev] = funcvalalt - vdt::fast_log(target) - targetmin;
+      
+//       _tgtvals[iev] = logdiff;
+//       _tgt2vals[iev] = expF;
+//       _tgt3vals[iev] = expF*expF;
+//       _tgt4vals[iev] = expF*logdiff*logdiff;
+    }  
+    
+    for (int iev=0; iev<nevrnd; ++iev) {
+      rndevts[iev]->SetArgLog(_tgtvals[iev]);
+//       rndevts[iev]->SetArgSig1(_tgtvals[iev]);
+//       rndevts[iev]->SetArgSig2(_tgt2vals[iev]);
+//       rndevts[iev]->SetArgSig3(_tgt3vals[iev]);
+//       rndevts[iev]->SetArgSig4(_tgt4vals[iev]);
+    }
+    
+    double sigmasqmax = std::numeric_limits<double>::lowest();
     if (dologtrain) {
 //       TrainTree(fEvts,sumw,tree,0,limits,true,false);
 // #pragma omp parallel
@@ -1069,31 +1273,29 @@ void MCGBRIntegrator::TrainForest(int ntrees, bool reuseforest) {
           evalv[ivar] = evt->Var(ivar);
         }
         double responsemin = tree.GetResponse(evalv.data());
-        evt->SetTargetMin(evt->TargetMin() + responsemin);
+        double targetmin = evt->TargetMin() + responsemin;
+        evt->SetTargetMin(targetmin);
 
+        double sigmasq = vdt::fast_exp(targetmin);
+        if (sigmasq > sigmasqmax) {
+          sigmasqmax = sigmasq;
+        }
       }
       
     }
-//     TrainTree(fEvts,sumw,gentree,0,limits,true,true);   
-// #pragma omp parallel
-    TrainTree(rndevts,sumw,gentree,0,limits,true,true);   
-    for (MCGBREvent *evt : fEvts) {
-      for (int ivar=0; ivar<fNVars; ++ivar) {
-        evalv[ivar] = evt->Var(ivar);
-      }
-      double response = gentree.GetResponse(evalv.data());
-      evt->SetTarget(evt->Target() + response);
-
-    }
-    
+    sigmasqmax = std::min(sigmasqmax,1.);
+        
     
     fGenTree = &fForest->Trees().front();
 
     
     double shrinkagefactordiff = fShrinkage*(1.-shrinkagefactor);
+    shrinkagefactordiff = 0.01;
     double shrinkagesecondarydiff = fShrinkage*(shrinkagefactor - fShrinkageFactorSecondary);
     
     shrinkagefactor += shrinkagefactordiff;
+    shrinkagefactor = std::min(1.0,shrinkagefactor);
+    
     shrinkagefactors.push_back(shrinkagefactordiff);
     
     fShrinkageFactorSecondary += shrinkagesecondarydiff;
@@ -1101,7 +1303,7 @@ void MCGBRIntegrator::TrainForest(int ntrees, bool reuseforest) {
     
     
 
-    printf("iter = %i, fulliter = %i, sameiter = %i, responses = %i, generesponses = %i, shrinkagefactor = %5f, fShrinkageFactorSecondary = %5f, sigmascale = %5e\n",iter,numtrees,sameiter,int(tree.Responses().size()),int(gentree.Responses().size()),shrinkagefactor,fShrinkageFactorSecondary,1./(1-fShrinkageFactorSecondary));
+    printf("iter = %i, fulliter = %i, sameiter = %i, responses = %i, generesponses = %i, shrinkagefactor = %5f, fShrinkageFactorSecondary = %5f, sigmasqmax = %5e\n",iter,numtrees,sameiter,int(tree.Responses().size()),int(gentree.Responses().size()),shrinkagefactor,fShrinkageFactorSecondary,sigmasqmax);
     
     posprobboundsnodes.reserve(posprobboundsnodes.size()+gentree.Responses().size());
     nodeidxs.reserve(nodeidxs.size()+gentree.Responses().size());
@@ -1259,6 +1461,7 @@ void MCGBRIntegrator::TrainForest(int ntrees, bool reuseforest) {
     bool dogenevents = (numtrees<ntrees/2);
 //     dogenevents = (numtrees<150);
     dogenevents = true;
+//     dogenevents = false;
 //     fEvts.clear();
     bool islast = false;
     if (numtrees<ntrees) {
@@ -1333,7 +1536,10 @@ void MCGBRIntegrator::TrainForest(int ntrees, bool reuseforest) {
     double suminter = 0.;
     double sumintersq = 0.;
     
+//     double sumlogdiff = 0.;
+    
     double maxsigmaratio = std::numeric_limits<double>::lowest();
+    
     
 //     double sumdiff = 0.;
 //     double sumdiffsq = 0.;
@@ -1371,7 +1577,13 @@ void MCGBRIntegrator::TrainForest(int ntrees, bool reuseforest) {
 //     double scaleorigin = forestintegral > 0. && integral2now > 0. ? 1.5*integral2now/forestintegral : 1.;
 //     double scaleorigin = islast ? 100. : 1.5;
 //     double scaleorigin = islast ? 1.5 : 1.5;
-    double scaleorigin = fStagedGeneration ? 4. : 1.;
+//     double scaleorigin = fStagedGeneration ? 4. : 1.;
+//     double scaleorigin = std::max(fIntegralRatio,1.);
+//     double scaleorigin = maxinterratio;
+    double scaleorigin = 1.;
+    
+    maxinterratio = std::numeric_limits<double>::lowest();
+
 //     if (fStagedGeneration) {
 //       scaleorigin = std::min(100.,std::max(1.,std::max(4.*fIntegralRatio, 4.*fSigmaRatio*fSigmaRatio)));
 //     }
@@ -1394,8 +1606,15 @@ void MCGBRIntegrator::TrainForest(int ntrees, bool reuseforest) {
 
 
       double probuniform = gRandom->Uniform();
-      bool douniform = probuniform > shrinkagefactor;
+      bool douniform = probuniform > 0.5;
       douniform = false;
+      if (islast) {
+        douniform = false;
+      }
+      
+//       bool doflat = !islast && probuniform > 0.5;
+      bool doflat = false;
+//       douniform = false;
       
 //           printf("full\n");
       double prob = gRandom->Uniform(0.,sumposprob);
@@ -1412,7 +1631,12 @@ void MCGBRIntegrator::TrainForest(int ntrees, bool reuseforest) {
       
       std::vector<double>::const_iterator nodeit = std::upper_bound(posprobboundsnodes.begin(),posprobboundsnodes.end(),prob);
       unsigned int nodeidx = nodeit - posprobboundsnodes.begin();
-      unsigned int inode = nodeidxs[nodeidx];          
+      unsigned int inode = nodeidxs[nodeidx];     
+      
+      if (doflat) {
+        treeidx = fForestGen->Trees().size()-1;
+        inode = gRandom->Integer(fForestGen->Trees().back().Responses().size());
+      }
       
 //           printf("inode = %i, tree size = %i\n",inode, int( fForest->Trees()[treeidx].Responses().size()));
       
@@ -1463,14 +1687,30 @@ void MCGBRIntegrator::TrainForest(int ntrees, bool reuseforest) {
       
       
       double genorigin = scaleorigin*target;
-      gentarget = genorigin;
-      if (fStagedGeneration) {
-        gentarget = std::min(exp(targetmin),genorigin);
+//       gentarget = std::min(vdt::fast_exp(targetmin),genorigin);
+//       gentarget = std::min(target*vdt::fast_exp(targetmin),genorigin);
+//       gentarget = target;
+//       gentarget = islast ? target : target*vdt::fast_exp(targetmin)/sigmasqmax;
+      
+//       gentarget = target*vdt::fast_exp(-targetmin);
+      gentarget = target*exp(-targetmin);
+      if (doflat || douniform) {
+        gentarget = genorigin;
       }
+//       gentarget = genorigin;
+//       if (fStagedGeneration) {
+//         gentarget = std::min(exp(targetmin),genorigin);
+//       }
       double realtarget = gentarget;
       
 //       double realtarget = exp(target);
 //       gentarget = std::min(target,exp(targetmin));
+      
+//       double interratio = vdt::fast_exp(targetmin)/target;
+      double interratio = exp(targetmin)/target;
+      if (interratio>maxinterratio) {
+        maxinterratio = interratio;
+      }
       
       double weight = 1.;
       double ratio1 = gentarget/genorigin;
@@ -1591,7 +1831,9 @@ void MCGBRIntegrator::TrainForest(int ntrees, bool reuseforest) {
       }
       funcval = islast ? Camel(fNVars,tmpvals.data()) : Camelrnd(fNVars,tmpvals.data());
 //       funcval = Camel(fNVars,tmpvals.data());
-      
+      if (funcval>maxfuncval) {
+        maxfuncval=funcval;
+      }
       
 //       double sigmaratio = (exp(targetmin) - target)/exp(targetmin);
       double sigmaratio = (exp(targetmin) - target)/funcval;
@@ -1644,7 +1886,10 @@ void MCGBRIntegrator::TrainForest(int ntrees, bool reuseforest) {
       evt.SetFuncVal(funcval);
       sumabsw += std::abs(evt.Weight());  
       
-      evt.SetFuncValAlt(vdt::fast_log(funcval));
+      evt.SetFuncValAlt(log(funcval));
+      
+//       sumlogdiff += evt.FuncValAlt() - vdt::fast_log(target);
+      
 //       double logsigma = log(funcval) + 1.*gRandom->Gaus();
 //       evt.SetFuncValAlt(exp(logsigma));
 //       evt.SetFuncValAlt(exp(0.1*gRandom->Gaus()));
@@ -1738,10 +1983,12 @@ void MCGBRIntegrator::TrainForest(int ntrees, bool reuseforest) {
     double sigmarelinter = sigmawinter/wavginter;
     
     fSigmaRatio = sigmarel1/sigmarel2t;
-    fIntegralRatio = integral2/forestintegral;
+    fIntegralRatio = integral2t/forestintegral;
     
 //     fSigmaScale = 1./(1-std::min(forestintegral/integral2t,shrinkagefactor));
     fSigmaScale = std::max(1.,std::min(1./maxsigmaratio,1./(1.-shrinkagefactor)));
+    
+//     fLogMean = sumlogdiff/sumw2;
     
 //     fSigmaScale = 1./(1.-std::min(forestintegral/integralfunc,shrinkagefactor));
     
@@ -1771,6 +2018,8 @@ void MCGBRIntegrator::TrainForest(int ntrees, bool reuseforest) {
 //     double sigmawfull = sqrt(sumfullsq/sumfullw - wavgfull*wavgfull);
     double sigmafull = sqrt(sumfullw)/sumfullw;
     
+    fIntegralEst = wavgfull;
+    
     double sigmarelequiv = sqrt(sigmarel2*sigmarel2 + sigmarel1*sigmarel1/scaleorigin/scaleorigin);
     
 //     double wavgfull = sumfull/sumfullw;
@@ -1797,7 +2046,7 @@ void MCGBRIntegrator::TrainForest(int ntrees, bool reuseforest) {
     
     
 //     if (0) {
-    printf("integral2t = %5e +- %5e, maxsigmaratio = %5f, fSigmaScale = %5f\n",integral2t,sigmaintegral2t,maxsigmaratio,fSigmaScale);
+    printf("integral2t = %5e +- %5e, maxsigmaratio = %5f, fSigmaScale = %5f, maxinterratio = %5f\n",integral2t,sigmaintegral2t,maxsigmaratio,fSigmaScale,maxinterratio);
 //     double sigmascale = 1./
 //     }
 //     printf("sumct = %5f, sumctw = %5f\n",sumct,sumctw);
@@ -1966,7 +2215,9 @@ void MCGBRIntegrator::TrainForest(int ntrees, bool reuseforest) {
 //       double decayrate = newforestintegral/forestintegral;
 //       double decayrate = std::min((1.-fShrinkage)*integral2t/forestintegral,1.);
 //       double decayrate = forestintegral > (1.+0.5*fShrinkage)*integral2t ? (1.-fShrinkage)*integral2t/forestintegral : 1.;
-      double decayrate  = std::min(1.,pow(integral2t/forestintegral,2.));
+//       double decayrate  = std::min(1.,pow(integral2t/forestintegral,2.));
+//       double decayrate = std::min(wavg2,1.);
+      double decayrate = 1.-0.2*fShrinkage;
 //       double decayrate =  0.96;
 //       decayrate = 0.5;
       printf("decaying responses, decayrate = %5f\n",decayrate);
@@ -2068,6 +2319,14 @@ void MCGBRIntegrator::TrainForest(int ntrees, bool reuseforest) {
     
       
       fForestIntegralNow = forestintegral;
+    }
+    
+    bool restartlog = restartgen;
+    if (restartlog) {
+      for (unsigned int iev=0; iev<fEvts.size(); ++iev) {
+        fEvts[iev]->SetTargetMin(fForest->InitialResponse());
+      }
+      fForest->Trees().clear();
     }
     
     
@@ -2175,16 +2434,17 @@ void MCGBRIntegrator::TrainForest(int ntrees, bool reuseforest) {
   TH1D *hevts = new TH1D("hevts","",100,-5.,5.);
   TH1D *hevtsw = new TH1D("hevtsw","",100,-5.,5.);
   TH1D *hevtstw = new TH1D("hevtstw","",100,-5.,5.);
-  TH1D *htgtpull = new TH1D("htgtpull","",200,-1.,1.);
+//   TH1D *htgtpull = new TH1D("htgtpull","",200,-1.,1.);
   TH1D *htgtpullrel = new TH1D("htgtpullrel","",200,-1.,1.);
-  TH1D *htgtwidth = new TH1D("htgtwidth","",200,0.,0.1);
-  TH2D *htgtwidth2 = new TH2D("htgtwidth2","",100,-0.05,0.1,100,-0.05,0.1);
+//   TH1D *htgtwidth = new TH1D("htgtwidth","",200,0.,0.1);
+//   TH2D *htgtwidth2 = new TH2D("htgtwidth2","",100,-0.05,0.1,100,-0.05,0.1);
   TH1D *htgtratiobase = new TH1D("htgtratiobase","",100,0.,2.);
+//   TH1D *htgtratiobase = new TH1D("htgtratiobase","",500,0.,20.);
   TH1D *htgtratiointer = new TH1D("htgtratiointer","",100,0.,2.);
   TH1D *htgtratiointerfull = new TH1D("htgtratiointerfull","",100,0.,2.);
   TH1D *htgtdiffinter = new TH1D("htgtdiffinter","",100,-20.,20.);
   TH1D *htgtdiffinterfull = new TH1D("htgtdiffinterfull","",100,-20.,20.);
-  TH1D *htgtratio = new TH1D("htgtratio","",100,0.,2.);
+//   TH1D *htgtratio = new TH1D("htgtratio","",100,0.,2.);
   
   TH2D *htgtratio2 = new TH2D("htgtratio2","",101,-0.05,0.05,101,-0.05,0.05);
   htgtratio2->GetXaxis()->SetTitle("h");
@@ -2208,38 +2468,42 @@ void MCGBRIntegrator::TrainForest(int ntrees, bool reuseforest) {
     double val = evtslast[iev]->Var(0);
     double weight = evtslast[iev]->Weight();
     double funcval = evtslast[iev]->FuncVal();
+    double target = evtslast[iev]->Target();
+    double targetmin = evtslast[iev]->TargetMin();
+    double f2 = target*exp(-targetmin);
+//     double f2 = vdt::fast_exp(targetmin);
 //     double h = vdt::fast_exp(evtslast[iev]->Target());
 //     double h = evtslast[iev]->Target();
-    double h = exp(evtslast[iev]->TargetMin());
-    double htgt = evtslast[iev]->TargetMin();    
-    double envval = evtslast[iev]->Target();  
+//     double h = exp(evtslast[iev]->TargetMin());
+//     double htgt = vdt::fast_log() - evtslast[iev]->TargetMin();    
+//     double envval = evtslast[iev]->Target();  
 //     double h = std::min(evtslast[iev]->Target(),vdt::fast_exp(evtslast[iev]->TargetMin()));
 //     double h = vdt::fast_exp(evtslast[iev]->TargetMin());
-    double s = std::min(h,exp(evtslast[iev]->TargetMin()));
+//     double s = std::min(h,exp(evtslast[iev]->TargetMin()));
     hevts->Fill(val);
     hevtsw->Fill(val,weight);
     hevtstw->Fill(val,weight*funcval);
 //     htgtpull->Fill((evtslast[iev]->FuncVal()-evtslast[iev]->Target()));
-    htgtpull->Fill((funcval-h));
-    htgtpullrel->Fill( log(funcval) - htgt );
-    htgtwidth->Fill(s);
-    htgtwidth2->Fill(h,s);
-    htgtratiobase->Fill( funcval/h );
+//     htgtpull->Fill((funcval-h));
+    htgtpullrel->Fill( log(funcval) - log(f2) );
+//     htgtwidth->Fill(s);
+//     htgtwidth2->Fill(h,s);
+    htgtratiobase->Fill( funcval/f2 );
 //     printf("funcval = %5e, h = %5e\n",funcval,h);
-    htgtratio2->Fill(h, funcval-h );
+//     htgtratio2->Fill(h, funcval-f2 );
 //     htgtratio->Fill( funcval/(h+10.*std::max(s,0.)) );
-    htgtratio->Fill( funcval/s );
-    htgtratiointer->Fill(h/envval);
-    htgtdiffinter->Fill(h-envval);
-    htgtratiointerfull->Fill(funcval/envval);
-    htgtdiffinterfull->Fill(funcval-envval);    
+//     htgtratio->Fill( funcval/s );
+    htgtratiointer->Fill(f2/target);
+    htgtdiffinter->Fill(f2-target);
+    htgtratiointerfull->Fill(funcval/target);
+    htgtdiffinterfull->Fill(funcval-target);    
 //     if (funcval>maxval) {
 //       maxval = funcval;
 //     }
     
     ofuncval = funcval;
-    otarget = h;
-    otargetmin = evtslast[iev]->TargetMin();
+    otarget = target;
+    otargetmin = targetmin;
     for (int ivar=0; ivar<fNVars; ++ivar) {
       ox[ivar] = evtslast[iev]->Var(ivar);
     }
@@ -2288,9 +2552,9 @@ void MCGBRIntegrator::TrainForest(int ntrees, bool reuseforest) {
   TCanvas *cratiobase = new TCanvas;
   htgtratiobase->Draw("E");
   
-  cratiobase->SaveAs("ratiobase.pdf");
+//   cratiobase->SaveAs("ratiobase.pdf");
   cratiobase->SetLogy();
-  cratiobase->SaveAs("ratiobaselog.pdf");
+//   cratiobase->SaveAs("ratiobaselog.pdf");
   
   TCanvas *cratiointer = new TCanvas;
   htgtratiointer->Draw("E");    
@@ -2372,11 +2636,15 @@ void MCGBRIntegrator::TrainForest(int ntrees, bool reuseforest) {
 void MCGBRIntegrator::TrainTree(const std::vector<MCGBREvent*> &evts, double sumwtotal, MCGBRTreeD &tree, int depth, const std::vector<std::pair<float,float> > limits, bool usetarget, bool doenv) {
     
   
-//   int minevents = doenv ? 10 : fMinEvents;
+//   int minevents = doenv ? 1 : fMinEvents;
 //   int minevents = doenv ? fMinEvents : std::max(10,int(fEvts.size()/100));
 //   int minevents = fForestGen->Trees().size() > 10 ? std::max(fMinEvents,int(fEvts.size()/1e3)) : fMinEvents;
+//   int minevents = fForestGen->Trees().size() > 50 ? fMinEvents : 10;
   int minevents = fMinEvents;
+//   int minevents = doenv ? fMinEvents : 10*fMinEvents;
+//   double mincutsig = doenv ? fMinCutSignificance : 0.;
   double mincutsig = fMinCutSignificance;
+//   double mincutsig = doenv ? 0. : fMinCutSignificance;
 //   int maxnodes = fForestGen->Trees().size() > 10 ? 2000 : fMaxNodes;
   int maxnodes = fMaxNodes;
 //   double mincutsig = doenv ? 1e4*fMinCutSignificance : fMinCutSignificance;
@@ -2439,6 +2707,7 @@ void MCGBRIntegrator::TrainTree(const std::vector<MCGBREvent*> &evts, double sum
     for (int iev = 0; iev<nev; ++iev) {
       const double weight = 1.;
       const double arg = evts[iev]->Arg();
+//       const double tgtval = arg;
       const double tgtval = -arg;
       const double tgt2val = 1.;
       
@@ -2454,14 +2723,21 @@ void MCGBRIntegrator::TrainTree(const std::vector<MCGBREvent*> &evts, double sum
   else {
 // #pragma omp parallel for
     for (int iev = 0; iev<nev; ++iev) {
-      const double weight = 1.;
-      const double arg = evts[iev]->ArgLog();
-      const double tgtval = -arg;
-      const double tgt2val = 1.;
+//       const double weight = 1.;
+//       const double arg = evts[iev]->ArgLog();
+//       const double tgtval = arg;
+//       const double tgt2val = 1.;
       
-      _weightvals[iev] = weight;
-      _tgtvals[iev] = tgtval;
-      _tgt2vals[iev] = tgt2val;
+      _weightvals[iev] = 1.;
+      _tgtvals[iev] = evts[iev]->ArgLog();
+      _tgt2vals[iev] = 1.;
+      
+//       _weightvals[iev] = 1.;
+//       _tgtvals[iev] = evts[iev]->ArgSig1();
+//       _tgt2vals[iev] = evts[iev]->ArgSig2();
+//       _tgt3vals[iev] = evts[iev]->ArgSig3();
+//       _tgt4vals[iev] = evts[iev]->ArgSig4();
+      
       
       for (int ivar=0; ivar<nvars; ++ivar) {
         _quants[ivar][iev] = evts[iev]->Quantile(ivar);
@@ -3266,7 +3542,24 @@ void MCGBRIntegrator::TrainTree(const std::vector<MCGBREvent*> &evts, double sum
     
 //     double curval = fDoEnvelope && !doenv ? -0.5*sumtgt*sumtgt/sumtgt2 : -k*sumtgt*sumtgt/sumw;
     
-    double curval = -0.5*sumtgt*sumtgt/sumtgt2;
+//     double dh = doenv ? -sumtgt/sumtgt2 : std::max(0.,-sumtgt/sumtgt2);
+
+      double curval = -0.5*sumtgt*sumtgt/sumtgt2;      
+      if (!doenv && -sumtgt/sumtgt2<0.) {
+        curval = 0;
+      }
+//     double dh = std::max(0.,sumtgtmax);
+//     double curval = doenv ? dh*sumtgt2 : -0.5*sumtgt*sumtgt/sumtgt2;
+    
+    
+//     if (!doenv) {
+//       curval = -pow(sumtgt4-0.*sumtgt*sumtgt*sumtgt2/sumw/sumw,2)/sumtgt3;
+//     }
+    
+    
+//     if (!doenv && -sumtgt/sumtgt2<0.) {
+//       curval = 0;
+//     }
     
 /*       double dh = doenv ? 0.5*(-2.*kenv*sumtgt + sqrt(4.*kenv*kenv*sumtgt*sumtgt + 8.*sumw*kenv*sumtgt2))/sumw : -sumtgt/sumtgt2;
        double curval = doenv ? -kenv*sumtgt*sumtgt/sumtgt2 + sumw*log(dh)  : sumtgt*dh + 0.5*sumtgt2*dh*dh; */   
@@ -3303,6 +3596,7 @@ void MCGBRIntegrator::TrainTree(const std::vector<MCGBREvent*> &evts, double sum
       double lefttgtsum = _sumtgts[ivar][ibin];
       double lefttgt2sum = _sumtgt2s[ivar][ibin];
 //       double lefttgt3sum = _sumtgt3s[ivar][ibin];
+//       double lefttgt4sum = _sumtgt4s[ivar][ibin];
 //       
 //       double rightwsum = sumw - leftwsum;
 //       double righttgtmax = _sumtgtmaxsr[ivar][ibin];
@@ -3310,6 +3604,7 @@ void MCGBRIntegrator::TrainTree(const std::vector<MCGBREvent*> &evts, double sum
       double righttgtsum = sumtgt - lefttgtsum;
       double righttgt2sum = sumtgt2 - lefttgt2sum;
 //       double righttgt3sum = sumtgt3 - lefttgt3sum;
+//       double righttgt4sum = sumtgt4 - lefttgt4sum;
 //       
       
 //       double dhleft = std::max(0., lefttgtsum/lefttgt2sum);
@@ -3461,8 +3756,37 @@ void MCGBRIntegrator::TrainTree(const std::vector<MCGBREvent*> &evts, double sum
 //        double leftval = fDoEnvelope && !doenv ? -0.5*lefttgtsum*lefttgtsum/lefttgt2sum : -k*lefttgtsum*lefttgtsum/leftwsum;
 //        double rightval = fDoEnvelope && !doenv ? -0.5*righttgtsum*righttgtsum/righttgt2sum : -k*righttgtsum*righttgtsum/rightwsum;
 
+//        double leftval = -0.5*lefttgtsum*lefttgtsum/lefttgt2sum;
+//        double rightval = -0.5*righttgtsum*righttgtsum/righttgt2sum;
+//        
+//        if (!doenv) {
+//          if (-lefttgtsum/lefttgt2sum<0.) leftval = 0.;
+//          if (-righttgtsum/righttgt2sum<0.) rightval = 0.;
+//        }
+       
+//        double dhleft = std::max(0.,lefttgtmax);
+//        double leftval = doenv ? dhleft*lefttgt2sum : -0.5*lefttgtsum*lefttgtsum/lefttgt2sum;
+//        
+//        double dhright = std::max(0.,righttgtmax);
+//        double rightval = doenv ? dhright*righttgt2sum : -0.5*righttgtsum*righttgtsum/righttgt2sum;
+
        double leftval = -0.5*lefttgtsum*lefttgtsum/lefttgt2sum;
        double rightval = -0.5*righttgtsum*righttgtsum/righttgt2sum;
+       
+       if (!doenv) {
+         if (-lefttgtsum/lefttgt2sum<0.) leftval = 0.;
+         if (-righttgtsum/righttgt2sum<0.) rightval = 0.;
+       }
+       
+/*       if (!doenv) {
+         if (-lefttgtsum/lefttgt2sum<0.) leftval = 0.;
+         if (-righttgtsum/righttgt2sum<0.) rightval = 0.;
+       }    */   
+        
+//        if (!doenv) {
+//          leftval = -pow(lefttgt4sum-0.*lefttgtsum*lefttgtsum*lefttgt2sum/leftwsum/leftwsum,2)/lefttgt3sum;
+//          rightval = -pow(righttgt4sum-0.*righttgtsum*righttgtsum*righttgt2sum/rightwsum/rightwsum,2)/righttgt3sum;
+//        }
        
 //        double dhleft = 0 ? std::max(0.,-lefttgtsum/lefttgt2sum) : -lefttgtsum/lefttgt2sum;
 //        double leftval = lefttgtsum*dhleft + 0.5*lefttgt2sum*dhleft*dhleft; 
@@ -3671,6 +3995,8 @@ void MCGBRIntegrator::BuildLeaf(const std::vector<MCGBREvent*> &evts, MCGBRTreeD
 //   double sumw = 0.;
   double sumtgt = 0.;
   double sumtgt2 = 0.;
+//   double sumtgt3 = 0.;
+//   double sumtgt4 = 0.;
 //   double tgtmax = std::numeric_limits<double>::lowest();
  
   if (doenv) {
@@ -3682,17 +4008,26 @@ void MCGBRIntegrator::BuildLeaf(const std::vector<MCGBREvent*> &evts, MCGBRTreeD
       
       sumtgt += tgtval;
       sumtgt2 += tgt2val;
+//       if (arg>tgtmax) {
+//         tgtmax = arg;
+//       }
     }
   }
   else {
     for (std::vector<MCGBREvent*>::const_iterator it = evts.begin(); it!=evts.end(); ++it) {
 //       double weight = (*it)->Weight();
-      const double arg = (*it)->ArgLog();
-      const double tgtval = -arg;
-      const double tgt2val = 1.;
+//       const double arg = (*it)->ArgLog();
+//       const double tgtval = arg;
+//       const double tgt2val = 1.;
+//       
+      sumtgt += (*it)->ArgLog();
+      sumtgt2 += 1.;
       
-      sumtgt += tgtval;
-      sumtgt2 += tgt2val;
+//       sumw += 1.;
+//       sumtgt += (*it)->ArgSig1();
+//       sumtgt2 += (*it)->ArgSig2();
+//       sumtgt3 += (*it)->ArgSig3();
+//       sumtgt4 += (*it)->ArgSig4();
     }
   }
   
@@ -3815,9 +4150,30 @@ void MCGBRIntegrator::BuildLeaf(const std::vector<MCGBREvent*> &evts, MCGBRTreeD
 //   double response = doenv ? dh : fShrinkage*dh;
 
 //     double dh =  fDoEnvelope && !doenv ? -sumtgt/sumtgt2 : sumtgt/sumw;
+    
+    double dh = doenv ? -sumtgt/sumtgt2 : std::max(0.,-sumtgt/sumtgt2);
+    
+    
+//     double dh = -sumtgt/sumtgt2;
+//     double dh = doenv ? std::max(0.,tgtmax) : std::max(0.,-sumtgt/sumtgt2);
+//     double dh = doenv ? std::max(0.,tgtmax) : -sumtgt/sumtgt2;
+//     double dh = std::max(0.,-sumtgt/sumtgt2);
 
-    double dh = -sumtgt/sumtgt2;
+//     double dh = 0.;
+//     if (doenv) {
+//       dh = -sumtgt/sumtgt2;
+//     }
+//     else {
+//       dh = vdt::fast_log((sumtgt4 - 0.*sumtgt*sumtgt*sumtgt2/sumw/sumw)/sumtgt3);
+//     }
+    
     double response = doenv ? fShrinkage*vdt::fast_exp(dh) : fShrinkage*dh;
+//     double response = fShrinkage*dh;
+
+//   double dh = std::max(0.,-sumtgt/sumtgt2);
+//   double response = fShrinkage*dh;
+    
+//     if (!doenv) response = 0.;
 //     double response = doenv ? std::min(exp(fShrinkage*dh),exp(dh/fShrinkage)) : fShrinkage*dh;
 
 //   double dh = doenv ? std::max(0.,-sumtgt/sumtgt2) : -sumtgt/sumtgt2;

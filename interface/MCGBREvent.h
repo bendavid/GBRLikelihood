@@ -79,6 +79,17 @@
        double ArgLog() const { return fArgLog; }
        void SetArgLog(double x) { fArgLog = x; }
        
+       double ArgSig1() const { return fArgSig1; }
+       void SetArgSig1(double x) { fArgSig1 = x; }
+
+       double ArgSig2() const { return fArgSig2; }
+       void SetArgSig2(double x) { fArgSig2 = x; }
+       
+       double ArgSig3() const { return fArgSig3; }
+       void SetArgSig3(double x) { fArgSig3 = x; }
+       
+       double ArgSig4() const { return fArgSig4; }
+       void SetArgSig4(double x) { fArgSig4 = x; }
        
     protected:
       float                    *fVars;
@@ -91,6 +102,10 @@
       double                    fTarget3;
       double                    fArg;
       double                    fArgLog;
+      double                    fArgSig1;
+      double                    fArgSig2;
+      double                    fArgSig3;
+      double                    fArgSig4;
   };
   
   

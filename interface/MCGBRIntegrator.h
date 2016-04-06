@@ -195,6 +195,10 @@ protected:
   double fSigmaRatio;
   double fIntegralRatio;
   
+  double fIntegralEst;
+  
+  double fLogMean;
+  
   
 };
 
